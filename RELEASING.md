@@ -1,60 +1,62 @@
-# Releasing
+# 构建与发布
 
-1. Commit pending work, bring main up to date with origin, and run `go test ./internal/...`. Others push to main too, so a release cut from a stale main leaves out their work:
+本文件适用于「自用MUSIC」衍生版本。应用没有配置自动更新源、Apple Developer ID 签名或公证；构建无需原作者的证书、Apple 账号或更新签名密钥。
 
-   ```bash
-   git pull --rebase origin main
-   ```
+## 分享源码
 
-2. Bump `version` in `mygo.json`, and add a `## 0.1.8` section at the top of `CHANGELOG.md` saying, in Chinese, what changed for people using the app since the last release (`git log v0.1.7..HEAD`, after the pull). Commit both in a commit titled just the version, e.g. `0.1.8`. MyGo's updater shows that section in the app's update window, and the release page takes it as its notes; `mygo build` fails without one.
-3. Push main first, and tag only once that push has gone through. Pushing both at once still pushes the tag when main is rejected, and the tag starts a release build of a commit that isn't on main:
-
-   ```bash
-   git push origin main
-   git tag v0.1.8
-   git push origin v0.1.8
-   ```
-
-   If main is rejected, pull again, add what came in to the changelog, amend the version commit, test, and push main again before tagging. If a tag went up on the wrong commit anyway, cancel its run, then delete the tag and the draft it made before tagging again:
-
-   ```bash
-   git push origin :refs/tags/v0.1.8
-   gh release delete v0.1.8 --yes
-   ```
-
-4. `.github/workflows/release.yml` builds macOS, Windows and Linux and uploads them to a draft release. Wait for every job to pass:
-
-   ```bash
-   gh run watch "$(gh run list --workflow release.yml -L1 --json databaseId -q '.[0].databaseId')" --exit-status
-   ```
-
-   If a job fails, don't publish; fix it first.
-
-5. Publish the draft and mark it latest:
-
-   ```bash
-   gh release edit v0.1.8 --draft=false --latest
-   ```
-
-6. Check the update feed shows the new version:
-
-   ```bash
-   curl -sL https://github.com/egoist/mygo-cloudmusic/releases/latest/download/update-darwin-arm64.json
-   ```
-
-7. Deploy the website. It reads the latest release when it's prerendered, so it has to be rebuilt after publishing:
-
-   ```bash
-   cd website && bun run deploy
-   ```
-
-   Then check https://mygo-cloudmusic.egoist.workers.dev/download/ shows the new version.
-
-## The speech recognition libraries
-
-Podcast captions run sherpa-onnx, whose libraries the app downloads with the model from the `sherpa-onnx-<version>` release, not from the app's own. They only change with sherpa-onnx's version, in `scripts/sherpa`. Then pack them again, signing the macOS ones with the app's Developer ID (the app's hardened runtime loads no others), commit the `internal/speech/natives.go` it writes, and upload them as a prerelease, which never becomes the latest that updates look for:
+保留 `LICENSE`、README 中的上游出处与 Git 历史。发布前运行：
 
 ```bash
-go run ./scripts/sherpa -sign "Developer ID Application: xinyu zeng (GJE9R5VE87)"
-gh release create sherpa-onnx-2.0.1 --prerelease --latest=false build/sherpa/*
+go test ./internal/...
+CGO_ENABLED=0 go test ./...
+go tool mygo vet .
+git diff --check
 ```
+
+检查提交列表，确认不包含 `.mygo/`、`build/`、登录态、歌曲缓存或本机凭据。当前 `0.1.20` 沿用上游版本号，个人版本的变更单独记录在 `CHANGELOG.md` 顶部。
+
+## 在本机打包
+
+在 macOS 上生成当前架构的应用：
+
+```bash
+go tool mygo build -skip-dmg
+```
+
+产物位于 `build/darwin-arm64/` 或 `build/darwin-amd64/`。需要磁盘映像时去掉 `-skip-dmg`；同时构建两种 Mac 架构可使用：
+
+```bash
+go tool mygo build -platform darwin/arm64,darwin/amd64
+```
+
+Windows 和 Linux 的构建目标也予以保留，但需在对应系统验证后再宣称支持：
+
+```bash
+go tool mygo build -platform windows/amd64,windows/arm64
+go tool mygo build -platform linux/amd64,linux/arm64
+```
+
+从 macOS 或 Linux 构建 Windows 安装程序需要先安装 NSIS。macOS 的磁盘映像与签名步骤需要在 macOS 上执行。
+
+## GitHub Actions 构建
+
+1. 将待构建提交推送到本仓库。
+2. 打开 **Actions → Build packages → Run workflow**，选择要构建的分支。
+3. 等待测试和三个平台的构建全部完成，在该次运行的 **Artifacts** 下载各平台安装包。构建产物保留 14 天。
+4. 解压 Artifacts 后，在对应系统检查安装、启动、扫码登录、播放和退出。macOS 包仅有临时签名，没有 Apple 公证。
+
+此工作流只生成安装包，不会创建或发布 Release，也不会连接上游的更新服务。`CI` 工作流在 `main` 推送或 PR 时运行测试与 MyGo 检查。
+
+## 发布可下载版本
+
+1. 同步修改 `mygo.json` 的 `version` 和 `CHANGELOG.md`，让变更记录准确描述这个衍生版本。
+2. 提交并推送代码，确认 CI 通过；针对同一提交运行 **Build packages**，下载并实机检查安装包。
+3. 在 GitHub 的 **Releases → Draft a new release** 中，以该提交创建 `v<version>` 标签，填写变更说明和已验证平台。
+4. 上传对应的 `.dmg`、`*-setup-*.exe`、`.deb` 或 `.tar.gz` 文件。说明 macOS 的签名状态，以及本版本需要手动下载更新。
+5. 确认标签对应安装包的源码提交后再发布。保留 GitHub 自动提供的源码下载入口。
+
+不要对当前配置使用 `go tool mygo build -upload`：该选项依赖 `updates.github`，本版本没有配置它。`website/` 尚未适配本版本，不属于此发布流程。
+
+## 播客转写依赖
+
+语音模型和运行库在首次使用时下载，不随客户端安装包发布。`internal/speech/natives.go` 保留了上游的运行库下载地址和校验值。若改为自行托管，先调整 `scripts/sherpa/main.go` 的目标仓库，再生成运行库与校验清单，并验证下载、校验、加载和转写；不要只替换 URL。

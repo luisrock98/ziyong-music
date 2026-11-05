@@ -3,3 +3,17 @@
 mygo_windows_*.syso
 /netease-music-mygo
 /node_modules/
+
+# Local credentials, logs and macOS metadata.
+.DS_Store
+.env
+.env.*
+!.env.example
+*.log
+*.p12
+*.pfx
+*.key
+*.pem
+/session
+/cookies.txt
+/coverage.out

@@ -199,8 +199,11 @@ func Run() error {
 		queueAt:    -1,
 		cacheUsed:  -1,
 	}
-	moveOldData()
-	a.useUpdater()
+	// The original distribution owns its legacy data and signed update feed.
+	if mygo.App.Name() == "MyGo 云音乐" {
+		moveOldData()
+		a.useUpdater()
+	}
 	mygo.App.WhenReady(func() {
 		a.settings = loadSettings()
 		a.settings.applyAppearance()

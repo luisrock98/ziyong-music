@@ -12,8 +12,9 @@
 # quit first.
 set -euo pipefail
 
-name="MyGo 云音乐"
-id="dev.egoist.cloudmusic"
+config="$(dirname "$0")/../mygo.json"
+name="$(plutil -extract name raw "$config")"
+id="$(plutil -extract identifier raw "$config")"
 release=0 keep_login=0 songs=0
 for arg in "$@"; do
 	case "$arg" in
