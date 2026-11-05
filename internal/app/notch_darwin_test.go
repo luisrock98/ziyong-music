@@ -15,8 +15,8 @@ import (
 	"netease-music-mygo/internal/netease"
 )
 
-// The notch, turned off, shows itself as the first song plays, and only
-// then; its button keeps it on.
+// On macOS, the notch, turned off, shows itself as the first song plays,
+// and only then; its button keeps it on.
 func TestNotchGreetsOnce(t *testing.T) {
 	a := newTestApp()
 	a.settings = defaultSettings()
