@@ -50,3 +50,30 @@ func TestBackAndForward(t *testing.T) {
 		t.Fatalf("forward after a new page went to %+v", a.route)
 	}
 }
+
+// The two home stations remain reachable when recommendations fail, and Back returns to the home page.
+func TestHomeStationsOffline(t *testing.T) {
+	a := newTestApp()
+	a.homeErr = "网络连接失败"
+	tt := ui.NewTester(a.view, 880, 580)
+	tt.Frame()
+	for _, target := range []struct {
+		label string
+		page  pageKind
+	}{{"每日推荐", pageDaily}, {"私人 FM", pageFM}} {
+		if err := tt.Click(target.label); err != nil {
+			t.Fatal(err)
+		}
+		tt.Frame()
+		if a.route.page != target.page {
+			t.Fatalf("opened %v for %s", a.route.page, target.label)
+		}
+		if err := tt.Click("返回"); err != nil {
+			t.Fatal(err)
+		}
+		tt.Frame()
+		if a.route.page != pageHome {
+			t.Fatal("Back did not return to the stations")
+		}
+	}
+}

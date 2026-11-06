@@ -16,7 +16,7 @@ func (a *app) artistEvents(c *ui.Context, d *artistData) {
 		a.empty(c, "这位歌手还没有自己的账号，没有动态")
 		return
 	}
-	ui.Column(c).Children(func() {
+	ui.Column(c).WidthPercent(100).MaxWidth(840).AlignSelf(ui.Center).Gap(16).Children(func() {
 		for i := range d.events {
 			a.event(c.Key(d.events[i].ID), &d.events[i])
 		}
@@ -32,23 +32,29 @@ func (a *app) artistEvents(c *ui.Context, d *artistData) {
 // what it shares, which opens its page.
 func (a *app) event(c *ui.Context, e *netease.Event) {
 	p := a.pal
-	ui.Column(c).Gap(12).Padding(20, 0).BorderWidth(0, 0, 1, 0).BorderColor(p.hairline).Children(func() {
+	ui.Column(c).Gap(12).Padding(18, 22).Radius(14).Background(p.sidebar).Border(1, p.hairline).Children(func() {
 		ui.Row(c).Gap(12).AlignItems(ui.Center).Children(func() {
 			a.cover(c, e.User.AvatarURL, 120, 40, 20)
 			ui.Column(c).Grow(1).Shrink(1).MinWidth(0).Gap(3).Children(func() {
-				ui.Text(c, e.User.Nickname).FontSize(14).FontWeight(600).SingleLine()
+				ui.RichText(c).FontSize(15).FontWeight(650).SingleLine().Children(func() {
+					if e.User.UserID > 0 {
+						a.link(c, e.User.Nickname, p.text, p.accent, route{page: pageUser, id: e.User.UserID})
+					} else {
+						ui.Text(c, e.User.Nickname)
+					}
+				})
 				ui.Text(c, time.UnixMilli(e.Time).Format("2006-01-02 15:04")).FontSize(12).TextColor(p.muted)
 			})
 		})
 		ct := &e.Content
 		if msg := strings.TrimSpace(ct.Msg); msg != "" {
-			ui.Text(c, msg).FontSize(14).LineHeight(1.6)
+			ui.Text(c, msg).FontSize(16).LineHeight(1.55)
 		}
 		if ct.Forwarded != "" {
 			ui.Text(c, ct.Forwarded).FontSize(13).LineHeight(1.5).TextColor(p.muted).Padding(10, 12).Radius(8).Background(p.hover)
 		}
 		if len(e.Pictures) > 0 {
-			ui.Grid(c).Columns(3).Gap(8).MaxWidth(480).Children(func() {
+			ui.Grid(c).Columns(min(3, len(e.Pictures))).Gap(8).MaxWidth(min(520, float32(len(e.Pictures))*180)).Children(func() {
 				for i, pic := range e.Pictures {
 					ui.Box(c.Key(i)).AspectRatio(1).Children(func() { a.coverFill(c, pic.SquareURL, 400, 8) })
 				}

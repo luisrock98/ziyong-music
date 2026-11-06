@@ -87,3 +87,12 @@ const subPage = 100
 func subQuery(offset int) url.Values {
 	return url.Values{"limit": {strconv.Itoa(subPage)}, "offset": {strconv.Itoa(offset)}, "total": {"true"}}
 }
+
+func SavedAlbums(offset int) ([]AlbumProfile, bool, error) {
+	var res struct {
+		Data    []AlbumProfile `json:"data"`
+		HasMore bool           `json:"hasMore"`
+	}
+	err := get("/api/album/sublist", subQuery(offset), &res)
+	return res.Data, res.HasMore, err
+}

@@ -125,47 +125,42 @@ func (a *app) nowPlayingBody(c *ui.Context, tr *netease.Track, art *artwork, acc
 		a.wallState.track = 0
 	}
 	{
-		// The top strip drags the window; the chevron closes the view,
-		// showing only while the pointer is in the window, as the pane tabs do.
-		ui.Row(c).Height(topBar(c)).Justify(ui.Center).AlignItems(ui.Center).DragWindow().Children(func() {
-			reveal(ui.Box(c.Key("close-reveal")), pointerIn).Children(func() {
-				if iconButton(c.Key("close"), iconDown, 22, white.Alpha(0.7), "关闭").Clicked() {
-					a.nowPlaying = false
+		// Keep navigation in one place across the lyrics, stage and wall.
+		ui.Row(c.Key("player-navigation")).Height(max(56, topBar(c))).PaddingX(24).AlignItems(ui.Center).Justify(ui.Center).DragWindow().Children(func() {
+			nav := ui.Row(c.Key("modes")).Gap(2).Padding(3).Radius(11).Background(white.Alpha(.08))
+			reveal(nav, pointerIn).Children(func() { a.paneTabs(c) })
+			reveal(ui.Row(c.Key("window-actions")).Absolute().Right(20).AlignItems(ui.Center).Gap(8), pointerIn).Children(func() {
+				if a.npPane == paneStage {
+					a.stageStyleButton(c)
 				}
+				iconButton(c.Key("close"), iconDown, 22, white.Alpha(.8), "关闭").OnClick(func() { a.nowPlaying = false })
 			})
 		})
 		if a.npPane == paneStage {
-			// The stage takes the whole view: the lyrics are the show, the
-			// controls a slim bar at the foot.
-			reveal(ui.Row(c.Key("tabs")).Absolute().Top(topBar(c)).Right(48).Gap(6), pointerIn).Children(func() {
-				a.stageStyleButton(c)
-				a.paneTabs(c)
-			})
 			a.stage(c, tr, accent)
 			a.stageBar(c, tr, art, accent)
 			return
 		}
 		if a.npPane == paneWall {
 			// The wall takes the whole view too, under the song playing.
-			a.wallPane(c, tr, art, accent, w, h, pointerIn)
+			a.wallPane(c, tr, art, accent, w, h)
 			return
 		}
 
-		side := float32(math.Min(float64(w)*0.36, 440))
-		// The cover leaves room above it for the pane's tabs.
-		coverSize := min(side, h-404)
-		ui.Row(c).Grow(1).Padding(0, 72, 44, 72).Gap(72).AlignItems(ui.Stretch).Children(func() {
-			var coverTop float32
+		side := min(w*.36, 440)
+		gutter := min(72, w*.052)
+		// Leave the transport and volume controls visible on shorter windows.
+		coverSize := min(side, max(180, h-310))
+		ui.Row(c).Grow(1).Padding(0, gutter, 32, gutter).Gap(gutter).AlignItems(ui.Stretch).Children(func() {
 			ui.Column(c).Width(side).Justify(ui.Center).Gap(0).Children(func() {
-				coverTop = ui.Box(c.Key("cover-top")).Height(0).LayoutBounds().Y
 				a.npCover(c, tr, art, coverSize)
 
-				ui.Row(c).Gap(8).AlignItems(ui.Center).Margin(36, 0, 18, 0).Children(func() {
+				ui.Row(c).Gap(8).AlignItems(ui.Center).Margin(20, 0, 14, 0).Children(func() {
 					ui.Column(c).Grow(1).Shrink(1).MinWidth(0).Gap(4).Children(func() {
 						if r := pl.Radio(); r != "" {
 							a.radioChip(c, r)
 						}
-						ui.Text(c, tr.Name).FontSize(22).FontWeight(700).LetterSpacing(-0.3).SingleLine()
+						ui.Text(c, tr.Name).FontSize(min(30, max(22, w*.024))).FontWeight(700).LetterSpacing(-0.3).SingleLine()
 						a.artistLinks(c, tr, white.Alpha(0.6), white, true).FontSize(15).SingleLine()
 					})
 					a.likeButton(c.Key("like"), tr, 22, white.Alpha(0.7))
@@ -185,7 +180,7 @@ func (a *app) nowPlayingBody(c *ui.Context, tr *netease.Track, art *artwork, acc
 					}
 					ui.Text(c, status).FontSize(11).FontFeatures("tnum").TextColor(white.Alpha(0.5))
 				})
-				ui.Box(c).Margin(14, 0, 18, 0).Children(func() {
+				ui.Box(c).Margin(10, 0, 8, 0).Children(func() {
 					a.transport(c, white, white.Alpha(0.45), accent, 28)
 				})
 				ui.Row(c).Justify(ui.Center).Children(func() {
@@ -195,27 +190,7 @@ func (a *app) nowPlayingBody(c *ui.Context, tr *netease.Track, art *artwork, acc
 
 			pane := ui.Column(c.Key("pane")).Grow(1).Basis(0).MinWidth(0)
 			pane.Children(func() {
-				// The pane starts level with the cover beside it. Its tabs come
-				// and go with the pointer, so they sit above it, out of the flow,
-				// never over it.
-				tabs := ui.Row(c.Key("tabs")).Absolute().Left(0).Gap(6)
-				b, tb := pane.LayoutBounds(), tabs.LayoutBounds()
-				if b.H > 0 && tb.H > 0 && coverTop > 0 {
-					if top := max(coverTop-b.Y, tb.H+8); top != a.npPaneTop {
-						a.npPaneTop = top
-						c.AnimationFrame()
-					}
-				} else {
-					c.AnimationFrame() // not laid out yet: the next frame places it
-				}
-				// Built anew, back from another pane, the tabs are not laid out
-				// yet: they take their height from the last time, rather than
-				// showing lower for a frame and rising.
-				if tb.H > 0 {
-					a.npTabsH = tb.H
-				}
-				reveal(tabs.Top(a.npPaneTop-8-a.npTabsH), pointerIn).Children(func() { a.paneTabs(c) })
-				ui.Box(c).Height(a.npPaneTop)
+				ui.Box(c).Height(max(16, (h-coverSize-256)/2))
 				switch a.npPane {
 				case paneLyrics:
 					a.lyricsPane(c, tr, h)
@@ -280,7 +255,7 @@ func (a *app) npTabs() []npTab {
 		}
 		return append(tabs, npTab{paneQueue, "待播清单"}, npTab{paneComments, "评论"})
 	}
-	return []npTab{{paneLyrics, "歌词"}, {paneStage, "律动"}, {paneQueue, "待播清单"}, {paneWall, "选歌"}, {paneComments, "评论"}}
+	return []npTab{{paneLyrics, "歌词"}, {paneStage, "舞台"}, {paneQueue, "待播清单"}, {paneWall, "照片墙"}, {paneComments, "评论"}}
 }
 
 func (a *app) paneTabs(c *ui.Context) {
@@ -344,7 +319,7 @@ func qualityBadge(c *ui.Context, st *netease.Stream) {
 // it is, and the controls.
 func (a *app) stageBar(c *ui.Context, tr *netease.Track, art *artwork, accent ui.Color) {
 	pl := a.pl
-	ui.Column(c).Padding(0, 48, 28, 48).Gap(10).Children(func() {
+	ui.Column(c).Margin(0, 32, 18, 32).Padding(12, 18).Radius(16).Background(white.Alpha(.08)).Gap(6).Children(func() {
 		a.scrubber(c.Key("stage-scrub"), &a.npScrub, white.Alpha(0.18), white.Alpha(0.9), 14, accent.Mix(white, 0.35))
 		ui.Row(c).Gap(14).AlignItems(ui.Center).Children(func() {
 			ui.Row(c).Grow(1).Basis(0).MinWidth(0).Gap(12).AlignItems(ui.Center).Children(func() {
@@ -369,10 +344,10 @@ func (a *app) stageBar(c *ui.Context, tr *netease.Track, art *artwork, accent ui
 }
 
 func (a *app) paneTab(c *ui.Context, i int, label string) {
-	b := ui.ButtonBase(c.Key(i)).Padding(6, 14).Radius(999).FocusRing(false).Label(label)
+	b := ui.ButtonBase(c.Key(i)).Padding(6, 11).Radius(8).FocusRing(false).Label(label)
 	bg, fg := ui.Transparent, white.Alpha(0.55)
 	if a.npPane == i {
-		bg, fg = white.Alpha(0.14), white
+		bg, fg = white.Alpha(0.23), white
 	} else if b.Hovered() {
 		bg = white.Alpha(0.06)
 	}
@@ -434,7 +409,8 @@ func (a *app) lyricsPane(c *ui.Context, tr *netease.Track, h float32) {
 		scroll.Invisible()
 	}
 	defer a.quietCard(c, dim, h*0.18)
-	a.timedLines(c, scroll, lines, pos, cur, lag, linesStyle{size: 30, weight: 800, lineHeight: 1.25, quiet: quiet}, nil)
+	w, _ := c.Size()
+	a.timedLines(c, scroll, lines, pos, cur, lag, linesStyle{size: min(38, max(26, w*.029)), weight: 700, lineHeight: 1.25, quiet: quiet}, nil)
 }
 
 // linesStyle is how timedLines sets its lines: the size, weight and
@@ -459,7 +435,7 @@ func (a *app) timedLines(c *ui.Context, scroll ui.Element, lines []lyrics.Line, 
 			for i, l := range lines {
 				line := ui.ButtonBase(c.Key(i)).Column().AlignItems(ui.Start).Padding(10, 12).Radius(12).Gap(6).FocusRing(false).Label(l.Text)
 				on := i == cur
-				alpha := float32(0.28)
+				alpha := float32(0.4)
 				if on {
 					alpha = 1
 				} else if line.Hovered() {

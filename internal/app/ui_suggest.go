@@ -88,12 +88,12 @@ func suggestionList(res netease.Suggestions) []suggestion {
 	return out[:min(len(out), 10)]
 }
 
-// searchField is the search field atop the sidebar, which suggests what
+// searchField is the search field in the navigation bar, which suggests what
 // its query may be after as it is typed, and, empty, lists the searches
 // before.
 func (a *app) searchField(c *ui.Context) {
 	p := a.pal
-	field := ui.Row(c).Height(32).PaddingX(10).Gap(7).Radius(9).AlignItems(ui.Center).Margin(0, 0, 14, 0)
+	field := ui.Row(c).Height(32).PaddingX(10).Gap(7).Radius(9).AlignItems(ui.Center)
 	if c.Focused(a.searchBox) {
 		field.Background(p.bg).Shadow(0, 0, 0, 3, p.accent.Alpha(0.25)).Border(1, p.accent.Alpha(0.6))
 	} else {
@@ -117,7 +117,7 @@ func (a *app) searchField(c *ui.Context) {
 			cb.SetOpen(false)
 		}
 		cb.Popup(func(panel ui.Element) {
-			panel.AttachTo(field, ui.AnchorBottomStart, ui.AnchorTopStart).
+			panel.AttachTo(field, ui.AnchorBottomEnd, ui.AnchorTopEnd).
 				Width(360).Padding(6).Margin(8, 0, 0, 0).Radius(12).
 				Background(p.bg).Border(1, p.hairline).
 				Shadow(0, 8, 24, -4, ui.RGBA(0, 0, 0, 0.2))

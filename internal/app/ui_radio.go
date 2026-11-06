@@ -99,6 +99,7 @@ func (a *app) radioFeed(name string) func(got func([]netease.Track)) {
 func (a *app) playFM() {
 	name := fmRadio(fmModes[a.fmMode].mode)
 	if a.pl.Radio() == name {
+		a.radioStarting = ""
 		if !a.pl.Playing() {
 			a.pl.TogglePlay()
 		}
@@ -204,6 +205,48 @@ func (a *app) startHeartMode() {
 	}()
 }
 
+// fmHomeCard plays the radio inline and opens its modes when the card is clicked.
+func (a *app) fmHomeCard(c *ui.Context) {
+	on := strings.HasPrefix(a.pl.Radio(), "fm:")
+	tr := a.pl.Current()
+	card := ui.ButtonBase(c.Key("home-fm")).Height(198).Radius(16).Label("私人 FM").Background(ui.Hex("#624664")).TextColor(white)
+	card.Children(func() {
+		if on && tr != nil {
+			art := a.art.get(netease.Sized(tr.Album.PicURL, 600), true)
+			artImage(c, backdrop(art), 16, 1)
+		}
+		ui.Row(c).Absolute().Top(0).Left(0).Right(0).Bottom(0).Padding(20).Gap(20).AlignItems(ui.Center).Children(func() {
+			if on && tr != nil {
+				a.cover(c, tr.Album.PicURL, 400, 148, 10)
+			} else {
+				ui.Box(c).Size(128, 148).Radius(10).Background(white.Alpha(.08)).Center().Children(func() { ui.Icon(c, iconRadio).Size(56, 56) })
+			}
+			ui.Column(c).Grow(1).Shrink(1).MinWidth(0).Gap(6).Children(func() {
+				if on && tr != nil {
+					ui.Text(c, tr.Name).FontSize(21).FontWeight(700).MaxLines(2)
+					ui.Text(c, tr.ArtistNames()).FontSize(14).TextColor(white.Alpha(.7)).SingleLine()
+				} else {
+					ui.Text(c, "私人 FM").FontSize(24).FontWeight(700)
+					ui.Text(c, "为你播放好音乐").FontSize(14).TextColor(white.Alpha(.7))
+				}
+				ui.Row(c).Margin(22, 0, 0, 0).Gap(8).AlignItems(ui.Center).Children(func() {
+					iconButton(c.Key("trash"), iconTrash, 18, white, "不喜欢这首歌").Disabled(!on || tr == nil).OnClick(a.trashFM)
+					playButton(c.Key("play"), on && a.pl.Playing(), 25, white).OnClick(func() {
+						if on {
+							a.pl.TogglePlay()
+						} else {
+							a.playFM()
+						}
+					})
+					iconButton(c.Key("next"), iconNext, 20, white, "下一首 FM").Disabled(!on).OnClick(a.pl.Next)
+				})
+			})
+		})
+	})
+	card.OnClick(func() { a.open(route{page: pageFM}) })
+
+}
+
 // fmPage is the personal FM: what it plays, large, over its cover's
 // colors, with the FM's own controls, and heart mode below.
 func (a *app) fmPage(c *ui.Context) {
@@ -213,27 +256,28 @@ func (a *app) fmPage(c *ui.Context) {
 		a.startMark(c)
 		defer a.endMark(c)
 		// The mode the FM plays in, if it plays.
+		active := a.pl.Radio()
+		if strings.HasPrefix(a.radioStarting, "fm:") {
+			active = a.radioStarting
+		}
 		for i, m := range fmModes {
-			if a.pl.Radio() == fmRadio(m.mode) {
+			if active == fmRadio(m.mode) {
 				a.fmMode = i
 			}
 		}
-		ui.Row(c).AlignItems(ui.End).Children(func() {
-			ui.Box(c).Grow(1).Children(func() { a.heading(c, "私人 FM", "无尽推荐") })
-			mode := a.fmMode
-			ui.Box(c).Margin(0, 0, 22, 0).Children(func() {
-				labels := make([]string, len(fmModes))
-				for i, m := range fmModes {
-					labels[i] = m.label
-				}
-				if segmented(c.Key("fm-mode"), &mode, labels...) {
-					a.fmMode = mode
-					// Playing the FM, it changes to the mode at once.
-					if strings.HasPrefix(a.pl.Radio(), "fm:") {
+		a.heading(c, "私人 FM", "")
+		ui.Row(c).Gap(8).Margin(0, 0, 20, 0).Children(func() {
+			for i, m := range fmModes {
+				filterButton(c.Key(m.mode), m.label, a.fmMode == i).OnClick(func() {
+					if a.fmMode == i {
+						return
+					}
+					a.fmMode = i
+					if strings.HasPrefix(active, "fm:") {
 						a.playFM()
 					}
-				}
-			})
+				})
+			}
 		})
 		a.fmCard(c)
 		a.section(c, "心动模式")
@@ -253,13 +297,14 @@ func (a *app) fmCard(c *ui.Context) {
 	if tr != nil {
 		art = a.art.get(netease.Sized(tr.Album.PicURL, 600), true)
 	}
-	card := ui.Box(c.Key("fm-card")).Height(320).Radius(24).Background(ui.Hex("#232328")).TextColor(white).
+	w, _ := c.Size()
+	card := ui.Box(c.Key("fm-card")).Height(min(340, max(240, w*.29))).Radius(24).Background(ui.Hex("#232328")).TextColor(white).
 		Shadow(0, 18, 44, -16, a.pal.cardShade)
 	in := artIn(card, backdrop(art))
 	card.Children(func() {
 		if in < 1 {
 			ui.Box(c).Absolute().Top(0).Left(0).Right(0).Bottom(0).Radius(24).
-				LinearGradient(ui.LinearGradient{Angle: 135, Oklab: true, From: ui.Oklch(0.42, 0.14, 20), To: ui.Oklch(0.3, 0.1, 300)})
+				LinearGradient(ui.LinearGradient{Angle: 135, Oklab: true, From: ui.Hex("#52568c"), To: ui.Hex("#30243f")})
 		}
 		artImage(c, backdrop(art), 24, in)
 		ui.Box(c).Absolute().Top(0).Left(0).Right(0).Bottom(0).Radius(24).
@@ -267,7 +312,7 @@ func (a *app) fmCard(c *ui.Context) {
 				{Color: ui.RGBA(0, 0, 0, 0.35), At: 0},
 				{Color: ui.RGBA(0, 0, 0, 0.1), At: 1},
 			}})
-		ui.Row(c).Absolute().Top(0).Left(0).Right(0).Bottom(0).Padding(36, 40).Gap(40).AlignItems(ui.Center).Children(func() {
+		ui.Row(c).Absolute().Top(0).Left(0).Right(0).Bottom(0).Padding(24, min(44, w*.04)).Gap(min(48, w*.04)).AlignItems(ui.Center).Children(func() {
 			a.fmCovers(c, tr)
 			ui.Column(c).Grow(1).Shrink(1).MinWidth(0).Gap(8).Children(func() {
 				label := "私人 FM · " + fmModes[a.fmMode].label
@@ -279,7 +324,7 @@ func (a *app) fmCard(c *ui.Context) {
 					ui.Text(c, label).FontSize(12).FontWeight(600).TextColor(white.Alpha(0.75))
 				})
 				if tr == nil {
-					ui.Text(c, "听见更多好音乐").FontSize(30).FontWeight(800).LetterSpacing(-0.6)
+					ui.Text(c, "你的专属电台").FontSize(min(40, w*.045)).FontWeight(800).LetterSpacing(-0.6)
 					ui.Text(c, "根据你的口味，一首接一首，不停推荐").FontSize(13.5).TextColor(white.Alpha(0.75))
 					ui.Row(c).Margin(18, 0, 0, 0).Children(func() {
 						label := "开始收听"
@@ -292,14 +337,14 @@ func (a *app) fmCard(c *ui.Context) {
 					})
 					return
 				}
-				ui.Text(c, tr.Name).FontSize(30).FontWeight(800).LetterSpacing(-0.6).MaxLines(2).LineHeight(1.2)
+				ui.Text(c, tr.Name).FontSize(min(40, w*.04)).FontWeight(800).LetterSpacing(-0.6).MaxLines(2).LineHeight(1.2)
 				switch {
 				case pl.Loading():
 					ui.Text(c, "正在缓冲…").FontSize(14).TextColor(white.Alpha(0.7)).SingleLine()
 				case pl.Err() != "":
 					ui.Text(c, pl.Err()).FontSize(14).TextColor(white).SingleLine()
 				default:
-					a.artistLinks(c, tr, white.Alpha(0.7), white, true).FontSize(14).SingleLine()
+					a.artistLinks(c, tr, white.Alpha(.8), white, true).FontSize(16).SingleLine()
 				}
 				ui.Row(c).Gap(14).AlignItems(ui.Center).Margin(20, 0, 0, -8).Children(func() {
 					if a.profile != nil {
@@ -332,7 +377,8 @@ func (a *app) fmCard(c *ui.Context) {
 // fmCovers stacks the cover playing over the next one's, which peeks out
 // behind it, tilted, as the FM's own player shows them.
 func (a *app) fmCovers(c *ui.Context, tr *netease.Track) {
-	const size = 232
+	w, _ := c.Size()
+	size := min(248, max(132, w*.21))
 	ui.Box(c).Size(size+36, size).Shrink(0).Children(func() {
 		var next *netease.Track
 		if tr != nil {

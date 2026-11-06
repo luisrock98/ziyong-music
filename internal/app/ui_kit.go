@@ -30,7 +30,7 @@ func paletteFor(t *ui.Theme) palette {
 	if t.Dark {
 		return palette{
 			dark:      true,
-			bg:        ui.Hex("#141416"),
+			bg:        ui.Hex("#222222"),
 			sidebar:   ui.Hex("#1c1c1f"),
 			text:      ui.Hex("#f5f5f7"),
 			muted:     ui.RGBA(235, 235, 245, 0.56),
@@ -38,7 +38,7 @@ func paletteFor(t *ui.Theme) palette {
 			hairline:  ui.RGBA(255, 255, 255, 0.07),
 			hover:     ui.RGBA(255, 255, 255, 0.06),
 			press:     ui.RGBA(255, 255, 255, 0.1),
-			accent:    ui.Oklch(0.66, 0.2, 22),
+			accent:    ui.Hex("#335eea"),
 			onAccent:  ui.Hex("#ffffff"),
 			cardShade: ui.RGBA(0, 0, 0, 0.45),
 		}
@@ -52,7 +52,7 @@ func paletteFor(t *ui.Theme) palette {
 		hairline:  ui.RGBA(0, 0, 0, 0.07),
 		hover:     ui.RGBA(0, 0, 0, 0.04),
 		press:     ui.RGBA(0, 0, 0, 0.08),
-		accent:    ui.Oklch(0.6, 0.21, 24),
+		accent:    ui.Hex("#335eea"),
 		onAccent:  ui.Hex("#ffffff"),
 		cardShade: ui.RGBA(0, 0, 0, 0.16),
 	}
@@ -115,7 +115,12 @@ func roundButton(c *ui.Context, size float32, color ui.Color, label string) ui.E
 
 // pillButton is a rounded button with an icon and a label.
 func pillButton(c *ui.Context, icon *ui.SVG, label string, bg, fg ui.Color) ui.Element {
-	b := ui.ButtonBase(c).Height(36).PaddingX(18).Gap(8).Radius(999).AlignItems(ui.Center).TextColor(fg)
+	b := ui.ButtonBase(c).Height(40).PaddingX(16).Gap(8).Radius(8).AlignItems(ui.Center).TextColor(fg)
+	p := paletteFor(c.Theme())
+	if bg == p.accent {
+		bg, fg = p.primaryBG(), p.accent
+		b.TextColor(fg)
+	}
 	fill := bg
 	if b.Hovered() {
 		fill = bg.Mix(ui.RGB(255, 255, 255), 0.12)
@@ -130,7 +135,7 @@ func pillButton(c *ui.Context, icon *ui.SVG, label string, bg, fg ui.Color) ui.E
 		if icon != nil {
 			ui.Icon(c, icon).Size(14, 14)
 		}
-		ui.Text(c, label).FontSize(14).FontWeight(600).SingleLine()
+		ui.Text(c, label).FontSize(17).FontWeight(600).SingleLine()
 	})
 	return b
 }
@@ -356,4 +361,32 @@ func (a *app) pageFoot(c *ui.Context, pg *paged, next func()) {
 	if b := foot.Bounds(); pg.more && !pg.loading && pg.err == "" && b.W > 0 && b.Y < 2*h {
 		next()
 	}
+}
+
+// primaryBG is the two-tone surface behind primary controls.
+func (p palette) primaryBG() ui.Color {
+	if p.dark {
+		return ui.Hex("#bbcdff")
+	}
+	return ui.Hex("#eaeffd")
+}
+
+func filterButton(c *ui.Context, label string, selected bool) ui.Element {
+	p := paletteFor(c.Theme())
+	b := ui.ButtonBase(c).Padding(7, 12).Radius(7).Label(label)
+	bg, fg := p.hover, p.muted
+	if selected {
+		bg, fg = p.primaryBG(), p.accent
+	} else if b.Hovered() {
+		bg = p.press
+	}
+	b.Background(bg).Children(func() { ui.Text(c, label).FontSize(15).FontWeight(650).TextColor(fg) })
+	return b
+}
+
+func b2f(b bool) float32 {
+	if b {
+		return 1
+	}
+	return 0
 }

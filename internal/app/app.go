@@ -25,6 +25,9 @@ const (
 	pageUser
 	pagePodcast
 	pagePodcasts
+	pageLibrary
+	pageDiscover
+	pageQueue
 )
 
 type route struct {
@@ -66,8 +69,6 @@ type app struct {
 	likedPrograms, askedPrograms map[int64]bool
 
 	daily       []netease.Track
-	dailySpin   spinState // the record on the daily card
-	dailyBars   barState  // the bars on its play button
 	featured    []netease.Playlist
 	charts      []netease.Playlist
 	homeErr     string
@@ -78,19 +79,27 @@ type app struct {
 	loadingPl  map[int64]bool
 	plErr      map[int64]string
 	artists    map[int64]*artistData
+	lastArtist int64
 	artistTab  int // what an artist's page lists: artistHot, artistLatest, artistAlbums or artistEvents
 	albums     map[int64]*albumData
 	users      map[int64]*userData
 	podcasts   map[int64]*podcastData
 	podcastTab *podcastTab // the podcasts tab's lists
 	trackList  ui.ListState
-	// Where the page and the sidebar are scrolled, kept while Now Playing
+	// Where the page and its list are scrolled, kept while Now Playing
 	// covers them, unbuilt.
 	pageScroll ui.ScrollState
-	navScroll  ui.ScrollState
 	scrolled   route // the page trackList and pageScroll are of
 
-	mineCollapsed, savedCollapsed bool
+	categoryPanel     bool
+	editingCategories bool
+	libraryCollection *libraryCollection
+	descriptionOpen   bool
+	libraryFilter     int
+	discovery         map[string]*discoveryData
+	homeGeneration    int
+	homeArtists       []netease.ArtistProfile
+	homeAlbums        []netease.AlbumProfile
 
 	query       string
 	searchBox   ui.Handle
@@ -102,8 +111,6 @@ type app struct {
 	npOpen      bool      // Now Playing as it last showed: open or not
 	npChangedAt time.Time // when it last opened or closed
 	npPane      int       // paneLyrics, paneQueue, paneStage, paneComments, paneProgram or paneCaptions
-	npPaneTop   float32   // how far the cover beside the pane starts below its top
-	npTabsH     float32   // how tall the pane's tabs were, last laid out
 	lyricScroll ui.ScrollState
 	lyricGlide  lyricGlide
 	lyricAt     int
@@ -137,10 +144,11 @@ type app struct {
 	sig                   playerSig
 	quitting              bool
 
-	settings    settings
-	settingsWin *mygo.Window
-	cacheUsed   int64 // the bytes the song cache takes, -1 until measured
-	updates     bool  // the update plugin is used (useUpdater)
+	settings      settings
+	settingsGroup int
+	settingsWin   *mygo.Window
+	cacheUsed     int64 // the bytes the song cache takes, -1 until measured
+	updates       bool  // the update plugin is used (useUpdater)
 
 	restored     bool   // playback picked up where it was left
 	savedSession string // the session as last kept
@@ -231,10 +239,8 @@ func Run() error {
 			TitleBarStyle: mygo.TitleBarHidden,
 			// As tall as the edge over a page (Linux, Windows).
 			TitleBarHeight: buttonsHeight,
-			// Inset from the corner, within the sidebar, as macOS 26's
-			// apps with a sidebar place them.
+			// Leave room for the navigation controls beside the traffic lights.
 			TrafficLightPosition: &mygo.Point{X: 20, Y: 20},
-			Vibrancy:             mygo.VibrancySidebar,
 			BackgroundColor:      "light-dark(#ffffff, #141416)",
 			Content:              ui.View(a.view),
 		})

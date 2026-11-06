@@ -95,16 +95,11 @@ func boneWidth(i int) float32 { return boneWidths[i%len(boneWidths)] }
 // the cards they show.
 
 func (a *app) homeSkeleton(c *ui.Context, s shimmer) {
-	s.bone(c.Key("daily"), dailyRadius).Height(dailyHeight)
-	cards := a.columns(c, 168)
-	if a.profile != nil {
-		a.section(c, "今日为你推荐")
-		a.playlistCardsSkeleton(c.Key("rec"), s, cards, 168, false)
-	}
-	a.section(c, "官方榜单")
-	a.chartCardsSkeleton(c, s)
 	a.section(c, "推荐歌单")
-	a.playlistCardsSkeleton(c.Key("featured"), s, cards*2, 168, false)
+	a.playlistCardsSkeleton(c.Key("rec"), s, a.columns(c, 160)*2, 160, false)
+	a.section(c, "For You")
+	ui.Grid(c).Columns(2).Gap(24).Children(func() { s.bone(c.Key("daily"), 16).Height(198); s.bone(c.Key("fm"), 16).Height(198) })
+
 }
 
 func (a *app) chartCardsSkeleton(c *ui.Context, s shimmer) {
@@ -147,17 +142,17 @@ func (a *app) playlistCardsSkeleton(c *ui.Context, s shimmer, n int, min float32
 // the header, which may hold blocks of its own.
 func (a *app) trackSkeleton(c *ui.Context, s shimmer, covers bool, header func(c *ui.Context)) {
 	w, h := c.Size()
-	wide := w-sidebarWidth > 820
+	wide := w > 820
 	top, bottom := a.insets(c)
 	a.underTop, a.underBottom = false, true
 	ui.Column(c.Key("skeleton")).Grow(1).Padding(top+pageGap, pagePad-12, bottom+32, pagePad-12).Children(func() {
 		a.startMark(c)
 		header(c)
-		for i := range max(8, int(h/54)) {
-			ui.Row(c.Key(i)).Height(54).Shrink(0).PaddingX(12).Gap(14).AlignItems(ui.Center).Children(func() {
+		for i := range max(8, int(h/64)) {
+			ui.Row(c.Key(i)).Height(64).Shrink(0).PaddingX(12).Gap(14).AlignItems(ui.Center).Children(func() {
 				ui.Box(c).Width(26).Center().Children(func() { s.text(c, 13, 1.3).Width(12) })
 				if covers {
-					s.bone(c, 6).Size(38, 38)
+					s.bone(c, 8).Size(46, 46)
 				}
 				ui.Column(c).Grow(3).Basis(0).MinWidth(0).Gap(3).Children(func() {
 					s.text(c, 14, 1.3).WidthPercent(boneWidth(i) * 0.8)
@@ -177,8 +172,9 @@ func (a *app) trackSkeleton(c *ui.Context, s shimmer, covers bool, header func(c
 
 // playlistHeaderSkeleton is playlistHeader while the playlist loads.
 func (a *app) playlistHeaderSkeleton(c *ui.Context, s shimmer) {
-	ui.Row(c).Gap(28).AlignItems(ui.End).Padding(0, 0, 26, 0).Children(func() {
-		s.bone(c, 14).Size(212, 212)
+	ui.Row(c).Gap(48).AlignItems(ui.Center).Padding(0, 0, 52, 0).Children(func() {
+		size := detailCoverSize(c)
+		s.bone(c, 14).Size(size, size)
 		ui.Column(c).Grow(1).Shrink(1).MinWidth(0).Gap(8).Children(func() {
 			s.text(c, 12, 1.3).Width(36)
 			s.text(c, 30, 1.2).WidthPercent(48)
@@ -187,7 +183,7 @@ func (a *app) playlistHeaderSkeleton(c *ui.Context, s shimmer) {
 				s.text(c, 12.5, 1.45).WidthPercent(78)
 				s.text(c, 12.5, 1.45).WidthPercent(52)
 			})
-			ui.Row(c).Gap(10).Margin(10, 0, 0, 0).Children(func() {
+			ui.Row(c).Gap(10).Margin(24, 0, 0, 0).Children(func() {
 				s.bone(c, 18).Size(92, 36)
 				s.bone(c, 18).Size(120, 36)
 			})

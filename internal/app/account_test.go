@@ -188,7 +188,7 @@ func TestOwnPageFrames(t *testing.T) {
 	}
 }
 
-// With NM_FRAMES set, saves the foot of the sidebar with the account menu
+// With NM_FRAMES set, saves the top navigation with the account menu
 // open, light and dark.
 func TestAccountMenuFrames(t *testing.T) {
 	dir := os.Getenv("NM_FRAMES")
@@ -207,7 +207,7 @@ func TestAccountMenuFrames(t *testing.T) {
 		tt.Frame()
 		img := tt.Image()
 		s := float32(img.Bounds().Dx()) / 1000
-		crop := image.Rect(0, int(400*s), int((sidebarWidth+20)*s), img.Bounds().Dy())
+		crop := image.Rect(int(700*s), 0, img.Bounds().Dx(), int(260*s))
 		out := image.NewRGBA(image.Rect(0, 0, crop.Dx(), crop.Dy()))
 		draw.Draw(out, out.Bounds(), img, crop.Min, draw.Src)
 		name := "account-light.png"

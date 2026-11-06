@@ -131,16 +131,20 @@ func (a *app) userPage(c *ui.Context) {
 	u := d.user
 	own := a.profile != nil && a.profile.UserID == id
 	a.scrollPage(c, func() {
-		ui.Row(c).Gap(28).AlignItems(ui.End).Children(func() {
-			ui.Box(c).Size(artistPhotoSize, artistPhotoSize).Radius(artistPhotoSize/2).Shadow(0, 18, 40, -10, p.cardShade).Children(func() {
-				a.coverFill(c, u.AvatarURL, 600, artistPhotoSize/2)
+		size := min(212, detailCoverSize(c))
+		ui.Row(c).Gap(36).AlignItems(ui.Center).Children(func() {
+			ui.Box(c).Size(size, size).Radius(size/2).Shadow(0, 18, 40, -10, p.cardShade).Children(func() {
+				a.coverFill(c, u.AvatarURL, 600, size/2)
 			})
 			ui.Column(c).Grow(1).Shrink(1).MinWidth(0).Gap(8).Children(func() {
-				ui.Text(c, "用户").FontSize(12).FontWeight(600).TextColor(p.accent)
-				ui.Text(c, u.Nickname).FontSize(30).FontWeight(800).LetterSpacing(-0.6).MaxLines(2).LineHeight(1.2)
+				ui.Text(c, "个人主页").FontSize(12).FontWeight(600).TextColor(p.accent)
+				ui.Text(c, u.Nickname).FontSize(detailTitleSize(c)).FontWeight(800).LetterSpacing(-0.6).MaxLines(2).LineHeight(1.2)
 				ui.Text(c, fmt.Sprintf("%s 关注 · %s 粉丝", count(u.Follows), count(u.Followeds))).FontSize(13).TextColor(p.muted)
 				if u.Signature != "" {
-					ui.Text(c, u.Signature).FontSize(12.5).TextColor(p.muted).MaxLines(2).LineHeight(1.45).Margin(2, 0, 0, 0)
+					a.detailDescription(c, u.Signature)
+				}
+				if own {
+					filterButton(c, "打开音乐库", true).AlignSelf(ui.Start).OnClick(func() { a.open(route{page: pageLibrary}) })
 				}
 			})
 		})
@@ -185,9 +189,9 @@ func (a *app) userPage(c *ui.Context) {
 // userRow is a user in a list, opening their page.
 func (a *app) userRow(c *ui.Context, u *netease.User) {
 	p := a.pal
-	row := ui.ButtonBase(c).Padding(10, 12).Gap(14).Radius(10).AlignItems(ui.Center).FocusRing(false).Label(u.Nickname)
+	row := ui.ButtonBase(c).Background(p.hover).Padding(14, 16).Gap(14).Radius(10).AlignItems(ui.Center).FocusRing(false).Label(u.Nickname)
 	if row.Hovered() {
-		row.Background(p.hover)
+		row.Background(p.press)
 	}
 	row.Children(func() {
 		a.cover(c, u.AvatarURL, 120, 48, 24)

@@ -95,7 +95,7 @@ func (a *app) stage(c *ui.Context, tr *netease.Track, accent ui.Color) {
 	pl := a.pl
 	lines, loaded := pl.Lyrics()
 	w, h := c.Size()
-	f := min(64, max(36, w*0.045))
+	f := min(76, max(36, w*.055))
 	box := ui.Box(c.Key("stage")).Grow(1)
 	// In a quiet part a hot comment takes the middle, the lyrics nearly
 	// gone under it (ui_quiet.go).
@@ -147,12 +147,12 @@ func (a *app) stage(c *ui.Context, tr *netease.Track, accent ui.Color) {
 			}
 
 			// The translation, and the line coming next, along the foot.
-			ui.Column(c).Absolute().Left(0).Right(0).Bottom(24).AlignItems(ui.Center).Gap(8).PassThrough().Children(func() {
+			ui.Column(c).Absolute().Left(32).Right(32).Bottom(20).AlignItems(ui.Center).Gap(10).PassThrough().Children(func() {
 				if cur >= 0 && lines[cur].Translation != "" {
-					ui.Text(c.Key("translation"), lines[cur].Translation).FontSize(18).FontWeight(600).TextColor(white.Alpha(0.72)).TextAlign(ui.Center)
+					ui.Text(c.Key("translation"), lines[cur].Translation).FontSize(min(22, w*.023)).FontWeight(600).TextColor(white.Alpha(0.72)).TextAlign(ui.Center)
 				}
 				if cur+1 < len(lines) {
-					ui.Text(c.Key("next"), lines[cur+1].Text).FontSize(14).TextColor(white.Alpha(0.32)).TextAlign(ui.Center).SingleLine()
+					ui.Text(c.Key("next"), lines[cur+1].Text).FontSize(14).TextColor(white.Alpha(0.52)).TextAlign(ui.Center).SingleLine()
 				}
 			})
 		})
@@ -196,6 +196,12 @@ func stageNextFrame(c *ui.Context, lines []lyrics.Line, cur int, pos, lead time.
 // stageLine shows the words of l as they are at pos, the whole line at
 // opacity fade.
 func (a *app) stageLine(c *ui.Context, l *lyrics.Line, pos time.Duration, f, w, h, fade float32, accent ui.Color) {
+	if len(l.Words) == 0 {
+		ui.Box(c.Key(l.At)).Absolute().Top(0).Bottom(0).Left(w * .08).Right(w * .08).Center().Opacity(fade).PassThrough().Children(func() {
+			ui.Text(c, l.Text).FontSize(f).FontWeight(750).TextAlign(ui.Center).TextColor(white)
+		})
+		return
+	}
 	switch a.settings.StageStyle {
 	case "partita":
 		a.partitaLine(c, l, pos, f, h, fade, accent)

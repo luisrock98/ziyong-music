@@ -362,7 +362,7 @@ func (a *app) playerBar(c *ui.Context) {
 	// narrower, the middle gives up to 140 DIPs, and what plays keeps room
 	// for its cover, some of its title and its heart.
 	const controls = 3*32 + 2*4 // lyrics, queue and the speaker
-	ui.Row(c).Absolute().Left(0).Right(0).Bottom(0).Height(playerBarHeight).PaddingX(20).Gap(20).AlignItems(ui.Center).Children(func() {
+	ui.Row(c).Absolute().Left(0).Right(0).Bottom(0).Height(playerBarHeight).PaddingX(pagePad).Background(p.bg.Alpha(0.96)).Gap(18).AlignItems(ui.Center).Children(func() {
 		// What plays.
 		ui.Row(c).Grow(1).Basis(0).MinWidth(150).Children(func() {
 			if tr == nil {
@@ -412,18 +412,27 @@ func (a *app) playerBar(c *ui.Context) {
 			a.likeButton(c.Key("like"), tr, 16, p.muted).Margin(0, 0, 0, 4).Shrink(0)
 		})
 
-		// Controls over the progress.
-		ui.Column(c).Width(440).Shrink(1).MinWidth(300).Gap(0).AlignItems(ui.Stretch).Children(func() {
-			a.transport(c, p.text, p.muted, p.accent, 18)
-			ui.Row(c).Gap(10).AlignItems(ui.Center).Margin(-4, 0, 0, 0).Children(func() {
-				ui.Text(c, clock(pl.Position())).FontSize(10.5).FontFeatures("tnum").TextColor(p.faint).Width(34).TextAlign(ui.End)
-				a.scrubber(c.Key("bar-scrub"), &a.barScrub, p.press, p.text.Alpha(0.75), 14, p.accent).Grow(1)
-				ui.Text(c, clock(pl.Duration())).FontSize(10.5).FontFeatures("tnum").TextColor(p.faint).Width(34)
-			})
+		// Transport stays centered while the progress rail spans the window.
+		ui.Row(c).Gap(12).AlignItems(ui.Center).Children(func() {
+			iconButton(c.Key("prev"), iconPrev, 20, p.text, "上一首").OnClick(pl.Prev)
+			playButton(c.Key("play"), pl.Playing(), 28, p.text).OnClick(pl.TogglePlay)
+			iconButton(c.Key("next"), iconNext, 20, p.text, "下一首").OnClick(pl.Next)
 		})
 
 		// Lyrics and volume.
 		ui.Row(c).Grow(1).Basis(0).MinWidth(controls).Justify(ui.End).AlignItems(ui.Center).Gap(4).Children(func() {
+			shuffle, repeat, ricon := p.muted, p.muted, iconRepeat
+			if pl.Shuffle() {
+				shuffle = p.accent
+			}
+			if pl.Repeat() != player.RepeatOff {
+				repeat = p.accent
+			}
+			if pl.Repeat() == player.RepeatOne {
+				ricon = iconRepeat1
+			}
+			iconButton(c.Key("repeat"), ricon, 16, repeat, "循环").OnClick(func() { pl.CycleRepeat() })
+			iconButton(c.Key("shuffle"), iconShuffle, 16, shuffle, "随机播放").OnClick(func() { pl.ToggleShuffle() })
 			lyr := p.muted
 			if a.nowPlaying {
 				lyr = p.accent
@@ -436,9 +445,15 @@ func (a *app) playerBar(c *ui.Context) {
 				a.nowPlaying, a.npPane = true, a.lyricsPaneChosen()
 			}
 			if iconButton(c.Key("queue"), iconQueue, 16, p.muted, "播放队列").Clicked() && tr != nil {
-				a.nowPlaying, a.npPane = true, paneQueue
+				a.open(route{page: pageQueue})
 			}
-			a.volumeButton(c, p.text.Alpha(0.75))
+			if w, _ := c.Size(); w >= 1100 {
+				a.volumeSlider(c.Key("inline-volume"), p.text, p.press, 84)
+			} else {
+				a.volumeButton(c, p.text.Alpha(.75))
+			}
 		})
 	})
+	a.scrubber(c.Key("bar-scrub"), &a.barScrub, p.press, p.accent, 12, p.accent).
+		Absolute().Left(0).Right(0).Bottom(playerBarHeight - 6)
 }

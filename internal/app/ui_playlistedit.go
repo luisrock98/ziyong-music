@@ -56,6 +56,11 @@ func (a *app) loadMine(uid int64) {
 		a.post(func() {
 			if err == nil && a.profile != nil && a.profile.UserID == uid {
 				a.mine, a.saved = made, saved
+				if a.route.page == pageLibrary {
+					if id := a.likedPlaylist(); id != 0 {
+						a.loadPlaylist(id, false)
+					}
+				}
 			}
 		})
 	}()

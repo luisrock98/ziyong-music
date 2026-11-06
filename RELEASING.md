@@ -13,7 +13,7 @@ go tool mygo vet .
 git diff --check
 ```
 
-检查提交列表，确认不包含 `.mygo/`、`build/`、登录态、歌曲缓存或本机凭据。当前 `0.1.20` 沿用上游版本号，个人版本的变更单独记录在 `CHANGELOG.md` 顶部。
+检查提交列表，确认不包含 `.mygo/`、`build/`、登录态、歌曲缓存或本机凭据。应用的版本号由 `mygo.json` 的 `version` 决定，打包工具会将它写入可执行文件和安装包。
 
 ## 在本机打包
 
@@ -49,13 +49,13 @@ go tool mygo build -platform linux/amd64,linux/arm64
 
 ## 发布可下载版本
 
-1. 同步修改 `mygo.json` 的 `version` 和 `CHANGELOG.md`，让变更记录准确描述这个衍生版本。
+1. 修改 `mygo.json` 的 `version`，同步更新 README 的当前版本，并在 `CHANGELOG.md` 顶部记录改动。
 2. 提交并推送代码，确认 CI 通过；针对同一提交运行 **Build packages**，下载并实机检查安装包。
 3. 在 GitHub 的 **Releases → Draft a new release** 中，以该提交创建 `v<version>` 标签，填写变更说明和已验证平台。
 4. 上传对应的 `.dmg`、`*-setup-*.exe`、`.deb` 或 `.tar.gz` 文件。说明 macOS 的签名状态，以及本版本需要手动下载更新。
 5. 确认标签对应安装包的源码提交后再发布。保留 GitHub 自动提供的源码下载入口。
 
-不要对当前配置使用 `go tool mygo build -upload`：该选项依赖 `updates.github`，本版本没有配置它。`website/` 尚未适配本版本，不属于此发布流程。
+当前配置使用手动上传流程。`go tool mygo build -upload` 需要另行配置 `updates.github`。
 
 ## 播客转写依赖
 

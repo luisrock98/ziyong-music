@@ -2,6 +2,7 @@ package app
 
 import (
 	"runtime"
+	"strings"
 	"time"
 
 	"github.com/egoist/mygo/plugins/glass"
@@ -10,7 +11,7 @@ import (
 	"netease-music-mygo/internal/netease"
 )
 
-const sidebarWidth = 232
+const navHeight = 64
 
 func (a *app) view(c *ui.Context) {
 	t := *c.Theme()
@@ -38,30 +39,13 @@ func (a *app) view(c *ui.Context) {
 	}
 	npOpen, npSettled := a.npState(c)
 	root.Children(func() {
-		page := ui.Row(c).Fill().AlignItems(ui.Stretch)
-		page.Children(func() {
-			if npOpen && npSettled {
-				// Covered by Now Playing: not built, which would cost each
-				// of its frames as much again as the stage itself. Where
-				// it is scrolled is the app's (pageScroll, navScroll,
-				// trackList), so it shows again as it was.
-				return
-			}
-			side := ui.Column(c).Width(sidebarWidth)
-			if !c.Vibrancy() {
-				side.Background(p.sidebar)
-			}
-			side.Children(func() { a.sidebar(c) })
-			// Keyed, so that a popover of the sidebar opening or closing
-			// keeps what the page and its bars hold, their edges' fades.
-			ui.Box(c.Key("main")).Grow(1).Background(p.bg).BorderWidth(0, 0, 0, 1).BorderColor(p.hairline).Children(func() {
+		if !npOpen || !npSettled {
+			ui.Box(c.Key("main")).Fill().Background(p.bg).Children(func() {
 				a.content(c)
-				// The bars float over the page, which scrolls under them:
-				// positioned, they paint over it.
 				a.pageTop(c)
 				a.playerBar(c)
 			})
-		})
+		}
 		a.nowPlayingLayer(c, npOpen, npSettled)
 	})
 	a.loginDialog(c)
@@ -103,12 +87,23 @@ func (a *app) open(r route) {
 	if r == a.route {
 		return
 	}
+	if r.page == pageArtist && a.lastArtist != 0 && a.lastArtist != r.id {
+		a.artistTab = artistOverview
+	}
 	a.history, a.forward = append(a.history, a.route), nil
 	a.show(r)
 }
 
 // show shows the page of r.
 func (a *app) show(r route) {
+	if a.route != r {
+		a.descriptionOpen = false
+		a.categoryPanel, a.editingCategories = false, false
+
+	}
+	if r.page == pageArtist {
+		a.lastArtist = r.id
+	}
 	a.route = r
 	if r.page == pageSearch {
 		a.query, a.searched = r.query, r
@@ -119,6 +114,13 @@ func (a *app) show(r route) {
 // load loads what the page of r shows, unless it has.
 func (a *app) load(r route) {
 	switch r.page {
+	case pageLibrary:
+		a.loadLibraryCollection()
+		if id := a.likedPlaylist(); id != 0 {
+			a.loadPlaylist(id, false)
+		}
+	case pageDiscover:
+		a.loadDiscovery(r.query)
 	case pageHome:
 		a.freshenHome()
 	case pagePlaylist:
@@ -167,99 +169,16 @@ func (a *app) goForward() {
 	a.show(r)
 }
 
-func (a *app) sidebar(c *ui.Context) {
-	// Under the window buttons where they sit over the sidebar, as the
-	// traffic lights do; elsewhere, as close to the top as to the sides.
-	top := float32(14)
-	if c.TitleBar().Left > 0 {
-		top = topBar(c) + 4
-	}
-	// Where nothing in it takes the press, the sidebar moves the window, as
-	// the title bar it reaches up into would.
-	ui.Column(c).Fill().Padding(top, 14, 14, 14).Gap(4).DragWindow().Children(func() {
-		a.searchField(c)
-
-		ui.Scroll(c.Key("nav")).TrackScroll(&a.navScroll).Grow(1).Margin(0, -6).Padding(0, 6).Gap(4).Children(func() {
-			a.navItem(c, iconHome, "为你推荐", route{page: pageHome})
-			a.navItem(c, iconDaily, "每日推荐", route{page: pageDaily})
-			a.navItem(c, iconRadio, "私人 FM", route{page: pageFM})
-			a.navItem(c, iconCharts, "排行榜", route{page: pageCharts})
-			a.navItem(c, iconPodcast, "播客", route{page: pagePodcasts})
-			if a.searched.query != "" {
-				a.navItem(c, iconSearch, "搜索结果", a.searched)
-			}
-			a.myPlaylists(c, "我的歌单", a.mine, true, &a.mineCollapsed)
-			a.myPlaylists(c, "收藏的歌单", a.saved, false, &a.savedCollapsed)
-		})
-
-		// What plays, as a card at the foot of the sidebar, over who listens.
-		if tr := a.pl.Current(); tr != nil {
-			a.sidebarNowPlaying(c, tr)
-		}
-		a.accountRow(c)
-	})
-}
-
-func (a *app) navItem(c *ui.Context, icon *ui.SVG, label string, r route) {
-	p := a.pal
-	selected := a.route.page == r.page && !a.nowPlaying
-	b := ui.ButtonBase(c.Key(label)).Height(34).PaddingX(10).Gap(10).Radius(8).AlignItems(ui.Center).Justify(ui.Start).FocusRing(false)
-	bg := ui.Transparent
-	switch {
-	case selected:
-		bg = p.press
-	case b.Hovered():
-		bg = p.hover
-	}
-	b.Background(b.AnimateColor("bg", bg, ui.Animation{Duration: 120 * time.Millisecond}))
-	color := p.text
-	if selected {
-		color = p.accent
-	}
-	b.Children(func() {
-		ui.Icon(c, icon).Size(17, 17).TextColor(color)
-		ui.Text(c, label).FontSize(13.5).FontWeight(500).TextColor(p.text)
-	})
-	if b.Clicked() {
-		a.open(r)
-	}
-}
-
-func (a *app) sidebarNowPlaying(c *ui.Context, tr *netease.Track) {
-	p := a.pal
-	card := ui.ButtonBase(c.Key("np-card")).Gap(10).Padding(8).Radius(12).AlignItems(ui.Center).FocusRing(false).Label("正在播放")
-	bg := p.hover
-	if card.Hovered() {
-		bg = p.press
-	}
-	card.Background(card.AnimateColor("bg", bg, ui.Animation{Duration: 120 * time.Millisecond}))
-	card.Children(func() {
-		a.cover(c, tr.Album.PicURL, 96, 40, 6).Shadow(0, 2, 6, 0, p.cardShade)
-		ui.Column(c).Grow(1).Shrink(1).MinWidth(0).Gap(2).Children(func() {
-			ui.Text(c, tr.Name).FontSize(12.5).FontWeight(600).SingleLine()
-			a.artistLinks(c, tr, p.muted, p.text).FontSize(11.5).SingleLine()
-		})
-	})
-	if card.Clicked() {
-		a.nowPlaying = true
-	}
-}
-
 // playerBarHeight is the height of the player along the foot of the pages.
-const playerBarHeight = 84
+const playerBarHeight = 64
 
 // pageGap is the room between the bar over a page and its content.
-const pageGap = 12
+const pageGap = 32
 
 // insets returns the room the bars over a page take at its top and its
 // bottom: pages pad their content by it, and scroll under the bars.
 func (a *app) insets(c *ui.Context) (top, bottom float32) {
-	top = topBar(c)
-	if runtime.GOOS == "darwin" {
-		// The edge reaches a little below the traffic lights' strip.
-		top += topEdgePad
-	}
-	return top, playerBarHeight
+	return max(navHeight, topBar(c)), playerBarHeight
 }
 
 // topEdgePad is the room the edge over a page leaves below the strip, on
@@ -316,28 +235,44 @@ func edgeShown(el ui.Element, under bool) float32 {
 	return el.AnimateTo("shown", target, ui.Animation{Duration: 180 * time.Millisecond})
 }
 
-// pageTop is the strip over the top of a page, frosting what scrolls under
-// it as macOS 26's hard scroll edge does: it drags the window, and holds
-// the back button once there is a page to go back to.
+// pageTop keeps navigation, search and the account within reach on every page.
 func (a *app) pageTop(c *ui.Context) {
 	top, _ := a.insets(c)
-	edge := ui.Box(c.Key("top-edge")).Absolute().Top(0).Left(0).Right(0).Height(top).DragWindow().
-		Material(glass.ScrollEdge{Hard: true, Background: a.pal.bg})
+	p := a.pal
+	edge := ui.Box(c.Key("top-edge")).Absolute().Top(0).Left(0).Right(0).Height(top).
+		Material(glass.ScrollEdge{Hard: true, Background: p.bg})
 	edge.Opacity(edgeShown(edge, a.underTop))
-	if len(a.history) > 0 || len(a.forward) > 0 {
-		ui.Row(c).Absolute().Top(0).Left(20).Height(topBar(c)).AlignItems(ui.Center).Children(func() {
-			back := iconButton(c.Key("back"), iconBack, 18, a.pal.muted, "返回").Disabled(len(a.history) == 0)
-			if len(a.history) == 0 {
-				back.Opacity(0.35)
-			}
-			if back.Clicked() {
-				a.back()
-			}
-			if len(a.forward) > 0 && iconButton(c.Key("forward"), iconForward, 18, a.pal.muted, "前进").Clicked() {
-				a.goForward()
+	bar := c.TitleBar()
+	ui.Row(c.Key("navigation")).Absolute().Top(0).Left(0).Right(0).Height(top).
+		Padding(0, max(pagePad, bar.Right+8), 0, max(pagePad, bar.Left+12)).Gap(14).
+		AlignItems(ui.Center).DragWindow().Background(p.bg.Alpha(0.96)).Children(func() {
+		ui.Row(c).Grow(1).Basis(0).AlignItems(ui.Center).Children(func() {
+			iconButton(c.Key("back"), iconBack, 17, p.text, "返回").Disabled(len(a.history) == 0).OnClick(a.back)
+			iconButton(c.Key("forward"), iconForward, 17, p.text, "前进").Disabled(len(a.forward) == 0).OnClick(a.goForward)
+		})
+		ui.Row(c).Gap(4).Children(func() {
+			for _, tab := range []struct {
+				title string
+				page  pageKind
+			}{
+				{"首页", pageHome}, {"发现", pageDiscover}, {"音乐库", pageLibrary},
+			} {
+				b := ui.ButtonBase(c.Key(tab.page)).Padding(7, 14).Center().Radius(9).Label(tab.title)
+				ink := p.text
+				if a.route.page == tab.page || tab.page == pageDiscover && (a.route.page == pageCharts || a.route.page == pagePodcasts) {
+					ink = p.accent
+				} else if b.Hovered() {
+					b.Background(p.hover)
+				}
+				b.Children(func() { ui.Text(c, tab.title).FontSize(18).FontWeight(700).TextColor(ink) })
+				b.OnClick(func() { a.open(route{page: tab.page}) })
 			}
 		})
-	}
+		ui.Row(c).Grow(1).Basis(0).MinWidth(170).Gap(8).Justify(ui.End).AlignItems(ui.Center).Children(func() {
+			ui.Column(c).Width(190).MinWidth(100).Shrink(1).Children(func() { a.searchField(c) })
+			a.accountRow(c)
+		})
+	})
 }
 
 func (a *app) content(c *ui.Context) {
@@ -349,6 +284,12 @@ func (a *app) content(c *ui.Context) {
 	// Pages mark where their content is, as they scroll.
 	a.underTop, a.underBottom = false, false
 	switch a.route.page {
+	case pageDiscover:
+		a.discoverPage(c)
+	case pageQueue:
+		a.queuePage(c)
+	case pageLibrary:
+		a.libraryPage(c)
 	case pageHome:
 		a.homePage(c)
 	case pageDaily:
@@ -390,6 +331,12 @@ func (a *app) centered(c *ui.Context, err string, retry func()) {
 
 func (a *app) loadHome() {
 	a.homeLoading, a.homeErr = true, ""
+	a.homeGeneration++
+	generation := a.homeGeneration
+	go func() {
+		albums, _ := netease.NewAlbums()
+		a.post(func() { a.homeAlbums = albums })
+	}()
 	signedIn := a.profile != nil
 	at := time.Now()
 	go func() {
@@ -397,11 +344,18 @@ func (a *app) loadHome() {
 		charts, err2 := netease.Charts()
 		daily, _ := netease.DailySongs()
 		var rec []netease.Playlist
+		var artists []netease.ArtistProfile
 		if signedIn {
+			artists = dailyArtists(daily)
 			rec, _ = netease.RecommendedPlaylists()
 		}
 		a.post(func() {
+			if generation != a.homeGeneration {
+				return
+			}
 			a.homeLoading = false
+			a.daily, a.homeArtists = daily, artists
+			a.loadHomeArtistPhotos(artists, generation)
 			if err1 != nil && err2 != nil {
 				// Loading the new day's again, what shows stays, to try
 				// once more.
@@ -410,10 +364,46 @@ func (a *app) loadHome() {
 				}
 				return
 			}
-			a.featured, a.charts, a.daily, a.recPlaylists = featured, charts, daily, rec
+			a.featured, a.charts, a.recPlaylists = featured, charts, rec
 			a.homeAt = at
 		})
 	}()
+}
+
+func (a *app) loadHomeArtistPhotos(artists []netease.ArtistProfile, generation int) {
+	for i, artist := range artists {
+		go func() {
+			profile, err := netease.ArtistSummary(artist.ID)
+			if err != nil || profile.ID != artist.ID || (profile.Avatar == "" && profile.PicURL == "") {
+				return
+			}
+			a.post(func() {
+				if generation == a.homeGeneration {
+					a.homeArtists[i].Avatar = profile.Avatar
+					a.homeArtists[i].PicURL = profile.PicURL
+				}
+			})
+		}()
+	}
+}
+
+// dailyArtists keeps the first six distinct, navigable artist credits in recommendation order.
+func dailyArtists(tracks []netease.Track) []netease.ArtistProfile {
+	seen := make(map[int64]bool)
+	var artists []netease.ArtistProfile
+	for _, track := range tracks {
+		for _, artist := range track.Artists {
+			if artist.ID <= 0 || strings.TrimSpace(artist.Name) == "" || seen[artist.ID] {
+				continue
+			}
+			seen[artist.ID] = true
+			artists = append(artists, netease.ArtistProfile{Artist: artist, PicURL: track.Album.PicURL})
+			if len(artists) == 6 {
+				return artists
+			}
+		}
+	}
+	return artists
 }
 
 // freshenHome loads the home page again once NetEase has picked the day's

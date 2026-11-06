@@ -60,35 +60,41 @@ func (a *app) albumPage(c *ui.Context) {
 
 func (a *app) albumHeader(c *ui.Context, al *netease.AlbumProfile) {
 	p := a.pal
-	ui.Row(c).Gap(28).AlignItems(ui.End).Padding(0, 0, 26, 0).Children(func() {
-		ui.Box(c).Size(212, 212).Radius(14).Shadow(0, 18, 40, -10, p.cardShade).Children(func() {
-			a.coverFill(c, al.PicURL, 600, 14)
-		})
+	ui.Row(c).Gap(48).AlignItems(ui.Center).Padding(0, 0, 52, 0).Children(func() {
+		a.playableDetailCover(c, al.PicURL, al.Songs)
 		ui.Column(c).Grow(1).Shrink(1).MinWidth(0).Gap(8).Children(func() {
 			ui.Text(c, "专辑").FontSize(12).FontWeight(600).TextColor(p.accent)
-			ui.Text(c, al.Name).FontSize(30).FontWeight(800).LetterSpacing(-0.6).MaxLines(2).LineHeight(1.2)
-			ui.RichText(c).FontSize(13).TextColor(p.muted).Children(func() {
-				for i, ar := range al.Artists {
-					if i > 0 {
-						ui.Text(c, ", ")
+			ui.Text(c, al.Name).FontSize(detailTitleSize(c)).FontWeight(700).LetterSpacing(-0.6).MaxLines(2).LineHeight(1.2)
+			if len(al.Artists) > 0 {
+				ui.RichText(c).FontSize(17).FontWeight(600).Children(func() {
+					for i, ar := range al.Artists {
+						if i > 0 {
+							ui.Text(c, " / ")
+						}
+						if ar.ID != 0 {
+							a.link(c.Key(i), ar.Name, p.text, p.accent, route{page: pageArtist, id: ar.ID})
+						} else {
+							ui.Text(c, ar.Name)
+						}
 					}
-					a.link(c.Key(i), ar.Name, p.muted, p.text, route{page: pageArtist, id: ar.ID})
-				}
-				meta := fmt.Sprintf(" · %d 首", len(al.Songs))
-				if al.PublishTime > 0 {
-					meta = " · " + time.UnixMilli(al.PublishTime).Format("2006-01-02") + meta
-				}
-				ui.Text(c, meta)
-			})
-			if d := strings.TrimSpace(al.Description); d != "" {
-				ui.Text(c, strings.ReplaceAll(d, "\n", " ")).FontSize(12.5).TextColor(p.muted).MaxLines(2).LineHeight(1.45).Margin(2, 0, 0, 0)
+				})
 			}
-			ui.Row(c).Gap(10).Margin(10, 0, 0, 0).Children(func() {
+			meta := []string{}
+			if al.PublishTime > 0 {
+				meta = append(meta, time.UnixMilli(al.PublishTime).Format("2006.01.02"))
+			}
+			meta = append(meta, fmt.Sprintf("%d 首", len(al.Songs)))
+
+			ui.Text(c, strings.Join(meta, " · ")).FontSize(14).TextColor(p.muted)
+			if d := strings.TrimSpace(al.Description); d != "" {
+				a.detailDescription(c, d)
+			}
+			ui.Row(c).Gap(10).Margin(24, 0, 0, 0).Children(func() {
 				if pillButton(c.Key("play"), iconPlay, "播放", p.accent, p.onAccent).Clicked() {
-					if a.pl.Shuffle() {
-						a.pl.ToggleShuffle()
-					}
-					a.pl.PlayQueue(al.Songs, firstPlayable(al.Songs))
+					a.playDetail(al.Songs, false)
+				}
+				if pillButton(c.Key("shuffle"), iconShuffle, "随机播放", p.hover.Over(p.bg), p.text).Clicked() {
+					a.playDetail(al.Songs, true)
 				}
 			})
 		})
@@ -121,10 +127,12 @@ func (a *app) albumCard(c *ui.Context, al *netease.AlbumProfile) {
 		}
 		art.AnimatePose(lift, ui.Snappy)
 		art.Children(func() { a.coverFill(c, al.PicURL, 400, 10) })
-		ui.Text(c, al.Name).FontSize(13).FontWeight(500).MaxLines(2).LineHeight(1.35)
+		ui.Text(c, al.Name).FontSize(15).FontWeight(650).MaxLines(2).LineHeight(1.35)
 		var meta []string
 		if a.route.page != pageArtist {
-			meta = append(meta, al.ArtistNames())
+			if names := al.ArtistNames(); names != "" {
+				meta = append(meta, names)
+			}
 		}
 		if al.PublishTime > 0 {
 			meta = append(meta, time.UnixMilli(al.PublishTime).Format("2006"))

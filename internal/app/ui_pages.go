@@ -11,13 +11,13 @@ import (
 	"netease-music-mygo/internal/player"
 )
 
-const pagePad = 40
+const pagePad = 72
 
 // columns returns how many cards of at least min DIPs fit across the page.
-func (a *app) columns(c *ui.Context, min float32) int {
+func (a *app) columns(c *ui.Context, minimum float32) int {
 	w, _ := c.Size()
-	inner := w - sidebarWidth - 2*pagePad
-	return max(2, int((inner+20)/(min+20)))
+	inner := w - 2*pagePad
+	return min(5, max(2, int((inner+24)/(minimum+24))))
 }
 
 func (a *app) heading(c *ui.Context, title, sub string) {
@@ -25,60 +25,72 @@ func (a *app) heading(c *ui.Context, title, sub string) {
 		if sub != "" {
 			ui.Text(c, sub).FontSize(12).FontWeight(600).TextColor(a.pal.muted).LetterSpacing(0.4)
 		}
-		ui.Text(c, title).FontSize(30).FontWeight(700).LetterSpacing(-0.6)
+		ui.Text(c, title).FontSize(40).FontWeight(750).LetterSpacing(-0.8)
 	})
 }
 
 func (a *app) section(c *ui.Context, title string) ui.Element {
-	return ui.Text(c, title).FontSize(19).FontWeight(700).LetterSpacing(-0.3).Margin(34, 0, 14, 0)
+	return ui.Text(c, title).FontSize(28).FontWeight(700).LetterSpacing(-0.5).Margin(46, 0, 20, 0)
 }
 
 func (a *app) homePage(c *ui.Context) {
 	loading := len(a.featured) == 0 && len(a.charts) == 0
-	if loading && !a.homeLoading {
-		a.centered(c, a.homeErr, a.loadHome)
-		return
-	}
 	now := c.Now()
 	top, bottom := a.insets(c)
 	ui.Scroll(c.Key("home")).TrackScroll(&a.pageScroll).Grow(1).Padding(top+pageGap, pagePad, bottom+48, pagePad).ScrollbarInsets(top, 0, bottom, 0).Children(func() {
 		a.startMark(c)
 		defer a.endMark(c)
-		hello := greeting(now)
-		if a.profile != nil {
-			hello += "，" + a.profile.Nickname
-		}
-		a.heading(c, hello, fmt.Sprintf("%d月%d日 %s", now.Month(), now.Day(), weekday(now)))
-		if loading {
+
+		if loading && a.homeLoading {
 			a.homeSkeleton(c, a.pageShimmer(c))
 			return
 		}
-		a.dailyCard(c, now)
-
-		if len(a.recPlaylists) > 0 {
-			a.section(c, "今日为你推荐")
-			ui.Grid(c).Columns(a.columns(c, 168)).GapX(20).GapY(28).Children(func() {
-				for i := range a.recPlaylists[:min(len(a.recPlaylists), a.columns(c, 168)*2)] {
-					a.playlistCard(c.Key(a.recPlaylists[i].ID), &a.recPlaylists[i])
+		picks := a.recPlaylists
+		if len(picks) == 0 {
+			picks = a.featured
+		}
+		if len(picks) > 0 {
+			ui.Row(c).AlignItems(ui.Center).Margin(0, 0, 20, 0).Children(func() {
+				ui.Text(c, "推荐歌单").FontSize(28).FontWeight(700).Grow(1)
+				filterButton(c, "查看全部", false).OnClick(func() { a.open(route{page: pageDiscover, query: "推荐歌单"}) })
+			})
+			a.playlistGrid(c.Key("recommendations"), picks[:min(len(picks), a.columns(c, 160)*2)])
+		}
+		if len(picks) > 0 {
+			a.section(c, "For You")
+		}
+		ui.Grid(c.Key("featured-stations")).Columns(2).Gap(24).Children(func() { a.dailyCard(c, now); a.fmHomeCard(c) })
+		if loading {
+			ui.Column(c).Padding(24).AlignItems(ui.Center).Gap(12).Children(func() {
+				ui.Text(c, a.homeErr).TextColor(a.pal.muted)
+				ui.Button(c, "重试").OnClick(a.loadHome)
+			})
+		}
+		if len(a.homeArtists) > 0 {
+			a.section(c, "为你推荐的艺人")
+			w, _ := c.Size()
+			cols := 6
+			if w < 900 {
+				cols = 3
+			}
+			ui.Grid(c).Columns(cols).Gap(24).Children(func() {
+				for i := range a.homeArtists {
+					a.artistCard(c.Key(a.homeArtists[i].ID), &a.homeArtists[i])
 				}
 			})
 		}
+		if len(a.homeAlbums) > 0 {
+			a.section(c, "新专速递")
+			a.albumGrid(c, a.homeAlbums)
+		}
+		if len(a.charts) > 0 {
+			ui.Row(c).AlignItems(ui.Center).Margin(46, 0, 20, 0).Children(func() {
+				ui.Text(c, "排行榜").FontSize(28).FontWeight(700).Grow(1)
+				filterButton(c, "查看全部榜单", false).OnClick(func() { a.open(route{page: pageDiscover, query: "排行榜"}) })
+			})
+			a.playlistGrid(c.Key("charts"), a.charts[:min(5, len(a.charts))])
+		}
 
-		a.section(c, "官方榜单")
-		official := a.charts[:min(4, len(a.charts))]
-		cols := min(4, max(2, a.columns(c, 260)))
-		ui.Grid(c).Columns(cols).Gap(20).Children(func() {
-			for i := range official {
-				a.chartCard(c.Key(official[i].ID), &official[i])
-			}
-		})
-
-		a.section(c, "推荐歌单")
-		ui.Grid(c).Columns(a.columns(c, 168)).GapX(20).GapY(28).Children(func() {
-			for i := range a.featured {
-				a.playlistCard(c.Key(a.featured[i].ID), &a.featured[i])
-			}
-		})
 	})
 }
 
@@ -104,23 +116,32 @@ func (a *app) chartsPage(c *ui.Context) {
 			a.playlistCardsSkeleton(c, s, a.columns(c, 150)*2, 150, true)
 			return
 		}
-		official := a.charts[:min(4, len(a.charts))]
-		cols := min(4, max(2, a.columns(c, 260)))
-		ui.Grid(c).Columns(cols).Gap(20).Children(func() {
-			for i := range official {
-				a.chartCard(c.Key(official[i].ID), &official[i])
-			}
-		})
-		if len(a.charts) > 4 {
-			a.section(c, "全部榜单")
-			rest := a.charts[4:]
-			ui.Grid(c).Columns(a.columns(c, 150)).GapX(20).GapY(28).Children(func() {
-				for i := range rest {
-					a.playlistCard(c.Key(rest[i].ID), &rest[i])
-				}
-			})
+
+		a.chartSections(c)
+	})
+}
+
+// chartSections is shared by the discovery filter and the standalone charts page.
+func (a *app) chartSections(c *ui.Context) {
+	if len(a.charts) == 0 {
+		return
+	}
+	w, _ := c.Size()
+	cols := 2
+	if w < 800 {
+		cols = 1
+	}
+	n := min(4, len(a.charts))
+	a.section(c, "榜单速览").Margin(0, 0, 18, 0)
+	ui.Grid(c.Key("featured-charts")).Columns(cols).Gap(16).Children(func() {
+		for i := range a.charts[:n] {
+			a.chartCard(c.Key(a.charts[i].ID), &a.charts[i])
 		}
 	})
+	if len(a.charts) > n {
+		a.section(c, "更多榜单")
+		a.playlistGrid(c.Key("more-charts"), a.charts[n:])
+	}
 }
 
 // playlistCard is a square cover with the playlist's name below: it lifts
@@ -134,11 +155,14 @@ func (a *app) playlistCard(c *ui.Context, pl *netease.Playlist) {
 // coverCard is a playlist's card, or a podcast's: its cover, with how many
 // times it was played on it, over its name and a line under that. The
 // button on the cover calls play; it reports whether the rest was clicked.
-func (a *app) coverCard(c *ui.Context, name, cover string, playCount float64, sub string, play func()) bool {
+func (a *app) coverCard(c *ui.Context, name, cover string, playCount float64, sub string, play func(), menu ...func(*ui.Menu)) bool {
 	p := a.pal
 	// From the top: a grid stretches the cards of a row as tall as the
 	// tallest, whose name or line under it takes two lines.
 	card := ui.ButtonBase(c).Column().Gap(10).AlignItems(ui.Stretch).Justify(ui.Start).FocusRing(false).Label(name)
+	if len(menu) > 0 {
+		card.ContextMenu(menu[0])
+	}
 	hovered := card.Hovered()
 	card.Children(func() {
 		art := ui.Box(c).AspectRatio(1).Radius(10)
@@ -152,16 +176,12 @@ func (a *app) coverCard(c *ui.Context, name, cover string, playCount float64, su
 		art.AnimatePose(lift, ui.Snappy)
 		art.Children(func() {
 			a.coverFill(c, cover, 400, 10)
-			if playCount > 0 {
-				ui.Row(c).Absolute().Top(8).Right(8).Padding(2, 7).Radius(999).Gap(3).AlignItems(ui.Center).
-					Background(ui.RGBA(0, 0, 0, 0.35)).TextColor(ui.RGB(255, 255, 255)).Children(func() {
-					ui.Icon(c, iconHeadset).Size(10, 10)
-					ui.Text(c, plays(playCount)).FontSize(10.5).FontWeight(600)
-				})
-			}
 			a.coverPlayButton(c, hovered, play)
 		})
-		ui.Text(c, name).FontSize(13).FontWeight(500).MaxLines(2).LineHeight(1.35)
+		if playCount > 0 && (a.route.page == pageDiscover || a.route.page == pageCharts) {
+			ui.Text(c, "▶ "+plays(playCount)).FontSize(11).TextColor(p.muted)
+		}
+		ui.Text(c, name).FontSize(15).FontWeight(650).MaxLines(2).LineHeight(1.35)
 		if sub != "" {
 			ui.Text(c, sub).FontSize(12).TextColor(p.muted).SingleLine().Margin(-6, 0, 0, 0)
 		}
@@ -185,9 +205,12 @@ func (a *app) coverFill(c *ui.Context, url string, px int, radius float32) {
 // coverPlayButton plays a playlist or a podcast from its card, without
 // opening it.
 func (a *app) coverPlayButton(c *ui.Context, shown bool, play func()) {
-	b := ui.ButtonBase(c.Key("play")).Absolute().Bottom(10).Right(10).Size(38, 38).Radius(999).Center().
-		Background(a.pal.accent).TextColor(ui.RGB(255, 255, 255)).Label("播放").FocusRing(false).
-		Shadow(0, 4, 12, 0, ui.RGBA(0, 0, 0, 0.3))
+	b := ui.ButtonBase(c.Key("play")).Absolute().Size(38, 38).Radius(999).Center().Background(ui.RGBA(24, 24, 26, .65)).TextColor(white).Label("播放").FocusRing(false).Shadow(0, 4, 12, 0, ui.RGBA(0, 0, 0, .3))
+	if a.route.page == pageHome || a.route.page == pageDiscover {
+		b.TopPercent(50).LeftPercent(50).Margin(-23, 0, 0, -23).Size(46, 46)
+	} else {
+		b.Bottom(10).Right(10)
+	}
 	pose := ui.Pose{Fade: 1, Scale: 0.8, Y: 6}
 	if shown || b.Hovered() {
 		pose = ui.Pose{Scale: 1}
@@ -205,7 +228,7 @@ func (a *app) coverPlayButton(c *ui.Context, shown bool, play func()) {
 // chartCard shows a chart with its top three songs beside its cover.
 func (a *app) chartCard(c *ui.Context, pl *netease.Playlist) {
 	p := a.pal
-	card := ui.ButtonBase(c).Gap(14).Padding(12).Radius(14).AlignItems(ui.Center).FocusRing(false).Label(pl.Name)
+	card := ui.ButtonBase(c).Gap(18).Padding(16).Radius(14).AlignItems(ui.Center).FocusRing(false).Label(pl.Name)
 	hovered := card.Hovered()
 	bg := p.hover
 	if hovered {
@@ -213,12 +236,12 @@ func (a *app) chartCard(c *ui.Context, pl *netease.Playlist) {
 	}
 	card.Background(card.AnimateColor("bg", bg, ui.Animation{Duration: 140 * time.Millisecond}))
 	card.Children(func() {
-		ui.Box(c).Size(84, 84).Radius(9).Shadow(0, 3, 10, -2, p.cardShade).Children(func() {
+		ui.Box(c).Size(100, 100).Radius(9).Shadow(0, 3, 10, -2, p.cardShade).Children(func() {
 			a.coverFill(c, pl.Cover(), 200, 9)
 		})
 		ui.Column(c).Grow(1).Shrink(1).MinWidth(0).Gap(5).Children(func() {
 			ui.Row(c).Gap(6).AlignItems(ui.Baseline).Children(func() {
-				ui.Text(c, pl.Name).FontSize(14).FontWeight(700).SingleLine()
+				ui.Text(c, pl.Name).FontSize(18).FontWeight(700).SingleLine()
 				ui.Text(c, pl.UpdateFreq).FontSize(11).TextColor(p.faint).SingleLine()
 			})
 			for i, line := range pl.Preview {
@@ -254,41 +277,42 @@ func (a *app) playlistPage(c *ui.Context) {
 
 func (a *app) playlistHeader(c *ui.Context, pl *netease.Playlist) {
 	p := a.pal
-	ui.Row(c).Gap(28).AlignItems(ui.End).Padding(0, 0, 26, 0).Children(func() {
-		ui.Box(c).Size(212, 212).Radius(14).Shadow(0, 18, 40, -10, p.cardShade).Children(func() {
-			a.coverFill(c, pl.Cover(), 600, 14)
-		})
+	ui.Row(c).Gap(48).AlignItems(ui.Center).Padding(0, 0, 52, 0).Children(func() {
+		a.playableDetailCover(c, pl.Cover(), pl.Tracks)
 		ui.Column(c).Grow(1).Shrink(1).MinWidth(0).Gap(8).Children(func() {
 			kind := "歌单"
 			if pl.UpdateFreq != "" {
 				kind = "榜单 · " + pl.UpdateFreq
 			}
 			ui.Text(c, kind).FontSize(12).FontWeight(600).TextColor(p.accent)
-			ui.Text(c, pl.Name).FontSize(30).FontWeight(800).LetterSpacing(-0.6).MaxLines(2).LineHeight(1.2)
+			ui.Text(c, pl.Name).FontSize(36).FontWeight(700).LetterSpacing(-0.6).MaxLines(2).LineHeight(1.2)
 			var meta []string
 			if pl.Creator.Nickname != "" {
-				meta = append(meta, pl.Creator.Nickname)
+				ui.RichText(c).FontSize(16).FontWeight(600).Children(func() {
+					if pl.Creator.UserID > 0 {
+						a.link(c, pl.Creator.Nickname, p.text, p.accent, route{page: pageUser, id: pl.Creator.UserID})
+					} else {
+						ui.Text(c, pl.Creator.Nickname)
+					}
+				})
 			}
-			meta = append(meta, fmt.Sprintf("%d 首", len(pl.Tracks)))
+			if pl.UpdateTime > 0 {
+				meta = append(meta, time.UnixMilli(pl.UpdateTime).Format("2006.01.02")+" 更新")
+			}
+			meta = append(meta, fmt.Sprintf("%d 首", max(pl.TrackCount, len(pl.Tracks))))
 			if pl.PlayCount > 0 {
 				meta = append(meta, plays(pl.PlayCount)+" 次播放")
 			}
 			ui.Text(c, strings.Join(meta, " · ")).FontSize(13).TextColor(p.muted)
 			if d := strings.TrimSpace(pl.Description); d != "" {
-				ui.Text(c, strings.ReplaceAll(d, "\n", " ")).FontSize(12.5).TextColor(p.muted).MaxLines(2).LineHeight(1.45).Margin(2, 0, 0, 0)
+				a.detailDescription(c, d)
 			}
-			ui.Row(c).Gap(10).Margin(10, 0, 0, 0).Children(func() {
+			ui.Row(c).Wrap().Gap(10).Margin(24, 0, 0, 0).Children(func() {
 				if pillButton(c.Key("play"), iconPlay, "播放", p.accent, p.onAccent).Clicked() {
-					if a.pl.Shuffle() {
-						a.pl.ToggleShuffle()
-					}
-					a.pl.PlayQueue(pl.Tracks, firstPlayable(pl.Tracks))
+					a.playDetail(pl.Tracks, false)
 				}
 				if pillButton(c.Key("shuffle"), iconShuffle, "随机播放", p.hover.Over(p.bg), p.text).Clicked() {
-					if !a.pl.Shuffle() {
-						a.pl.ToggleShuffle()
-					}
-					a.pl.PlayQueue(pl.Tracks, firstPlayable(pl.Tracks))
+					a.playDetail(pl.Tracks, true)
 				}
 				if mine := a.editable(pl.ID); mine != nil {
 					more := iconButton(c.Key("more"), iconMore, 18, p.muted, "更多")
@@ -334,7 +358,7 @@ func (a *app) trackRows(c *ui.Context, tracks []netease.Track, covers bool, head
 	}
 	w, _ := c.Size()
 	// An album's page has no column of the album its songs are on.
-	wide := w-sidebarWidth > 820 && a.route.page != pageAlbum
+	wide := w > 820 && a.route.page != pageAlbum
 	top, bottom := a.insets(c)
 	// Rows out of view are not built, their marks with them: a list
 	// scrolled away from its start or end has content under the bars.
@@ -358,13 +382,13 @@ func (a *app) trackRows(c *ui.Context, tracks []netease.Track, covers bool, head
 		i--
 		tr := &tracks[i]
 		playing := cur != nil && cur.ID == tr.ID
-		row := ui.ButtonBase(c.Key(tr.ID)).Height(54).PaddingX(12).Gap(14).Radius(10).AlignItems(ui.Center).FocusRing(false).Label(tr.Name).
+		row := ui.ButtonBase(c.Key(tr.ID)).Height(64).PaddingX(12).Gap(14).Radius(10).AlignItems(ui.Center).FocusRing(false).Label(tr.Name).
 			ContextMenu(a.songItems(tr, pid))
 		hovered := row.Hovered()
 		bg := ui.Transparent
 		switch {
 		case playing:
-			bg = p.accent.Alpha(0.09)
+			bg = p.primaryBG()
 		case hovered:
 			bg = p.hover
 		}
@@ -384,18 +408,18 @@ func (a *app) trackRows(c *ui.Context, tracks []netease.Track, covers bool, head
 				}
 			})
 			if covers {
-				a.cover(c, tr.Album.PicURL, 96, 38, 6)
+				a.cover(c, tr.Album.PicURL, 100, 46, 8)
 			}
 			ui.Column(c).Grow(3).Basis(0).MinWidth(0).Gap(3).Children(func() {
 				name := p.text
 				if playing {
 					name = p.accent
 				}
-				spans := []ui.Span{{Text: tr.Name, Weight: 500, Color: name}}
+				spans := []ui.Span{{Text: tr.Name, Weight: 600, Color: name}}
 				if len(tr.Alias) > 0 {
 					spans = append(spans, ui.Span{Text: "（" + tr.Alias[0] + "）", Color: p.faint})
 				}
-				ui.RichText(c, spans...).FontSize(14).SingleLine()
+				ui.RichText(c, spans...).FontSize(17).SingleLine()
 				ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
 					if !tr.Playable() {
 						ui.Text(c, "VIP").FontSize(9).FontWeight(800).TextColor(p.accent).Padding(0, 4).Radius(3).Border(1, p.accent.Alpha(0.6))
@@ -441,4 +465,49 @@ func (a *app) nowPlayingBars(c *ui.Context) {
 			p.AnimationFrame()
 		}
 	})
+}
+
+func detailCoverSize(c *ui.Context) float32 {
+	w, _ := c.Size()
+	return min(288, max(156, w*.24))
+}
+func detailTitleSize(c *ui.Context) float32 {
+	w, _ := c.Size()
+	return min(56, max(34, w*.048))
+}
+func (a *app) detailDescription(c *ui.Context, description string) {
+	text := ui.Text(c, description).FontSize(14).TextColor(a.pal.muted).LineHeight(1.45)
+	if !a.descriptionOpen {
+		text.MaxLines(3)
+	}
+	if len([]rune(description)) > 64 || strings.Count(description, "\n") >= 3 {
+		label := "展开简介"
+		if a.descriptionOpen {
+			label = "收起简介"
+		}
+		ui.ButtonBase(c).Label(label).AlignSelf(ui.Start).Children(func() { ui.Text(c, label).FontSize(13).TextColor(a.pal.accent) }).OnClick(func() { a.descriptionOpen = !a.descriptionOpen })
+	}
+}
+
+func (a *app) playDetail(tracks []netease.Track, shuffle bool) {
+	if len(tracks) == 0 {
+		return
+	}
+	if a.pl.Shuffle() != shuffle {
+		a.pl.ToggleShuffle()
+	}
+	a.pl.PlayQueue(tracks, firstPlayable(tracks))
+}
+
+func (a *app) playableDetailCover(c *ui.Context, url string, tracks []netease.Track) {
+	size := detailCoverSize(c)
+	b := ui.ButtonBase(c.Key("detail-cover")).Size(size, size).Radius(14).Center().Label("播放封面中的曲目").Disabled(len(tracks) == 0).Shadow(0, 18, 40, -10, a.pal.cardShade)
+	hovered := b.Hovered()
+	b.Children(func() {
+		a.coverFill(c, url, 600, 14)
+		if hovered {
+			ui.Box(c).Size(52, 52).Radius(26).Center().Background(ui.RGBA(24, 24, 26, .6)).Children(func() { ui.Icon(c, iconPlay).Size(20, 20).TextColor(white) })
+		}
+	})
+	b.OnClick(func() { a.playDetail(tracks, false) })
 }

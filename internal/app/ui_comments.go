@@ -191,7 +191,7 @@ func (a *app) commentsPane(c *ui.Context, tr *netease.Track) {
 				}
 			default:
 				ui.Icon(c, iconComment).Size(40, 40).TextColor(white.Alpha(0.3))
-				ui.Text(c, "还没有评论，快来抢沙发").FontSize(17).FontWeight(600).TextColor(white.Alpha(0.45))
+				ui.Text(c, "暂无评论").FontSize(17).FontWeight(600).TextColor(white.Alpha(0.45))
 			}
 		})
 		return
@@ -200,7 +200,7 @@ func (a *app) commentsPane(c *ui.Context, tr *netease.Track) {
 	scroll := ui.Scroll(c.Key("comments")).Grow(1).TrackScroll(&cs.scroll).Padding(4, 8, 48, 0)
 	var end ui.Rect
 	scroll.Children(func() {
-		ui.Column(c).Gap(2).Children(func() {
+		ui.Column(c).Gap(8).Children(func() {
 			if len(cs.hot) > 0 {
 				commentHeading(c, "精彩评论")
 				for i := range cs.hot {
@@ -239,17 +239,23 @@ func (a *app) commentsPane(c *ui.Context, tr *netease.Track) {
 }
 
 func commentHeading(c *ui.Context, title string) {
-	ui.Text(c, title).FontSize(13).FontWeight(700).TextColor(white.Alpha(0.55)).LetterSpacing(0.2).Padding(18, 12, 6, 12)
+	ui.Text(c, title).FontSize(20).FontWeight(700).TextColor(white.Alpha(.9)).Padding(16, 4, 4, 4)
 }
 
 // commentRow is a comment: who wrote it, what, and what it replies to,
 // when, from where, and how many liked it, with a thumb to like it too.
 func (a *app) commentRow(c *ui.Context, cm *netease.Comment, now time.Time) {
-	ui.Row(c).Padding(12).Gap(12).Radius(12).AlignItems(ui.Start).Children(func() {
+	ui.Row(c).Padding(14).Gap(12).Radius(12).Background(white.Alpha(.065)).AlignItems(ui.Start).Children(func() {
 		a.avatar(c, cm.User.AvatarURL, 34, white.Alpha(0.1))
 		ui.Column(c).Grow(1).Shrink(1).MinWidth(0).Gap(6).Children(func() {
 			ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-				ui.Text(c, cm.User.Nickname).FontSize(13).FontWeight(600).TextColor(white.Alpha(0.6)).SingleLine().Shrink(1).MinWidth(0)
+				ui.RichText(c).FontSize(14).FontWeight(600).TextColor(white.Alpha(.8)).SingleLine().Shrink(1).MinWidth(0).Children(func() {
+					if cm.User.ID > 0 {
+						a.link(c, cm.User.Nickname, white.Alpha(.8), white, route{page: pageUser, id: cm.User.ID})
+					} else {
+						ui.Text(c, cm.User.Nickname)
+					}
+				})
 				ui.Spacer(c)
 				a.commentLike(c.Key("like"), cm)
 			})

@@ -68,7 +68,7 @@ func TestAccountMenuKeepsPlayerEdge(t *testing.T) {
 	bar := func() *image.RGBA {
 		img := tt.Image()
 		s := float32(img.Bounds().Dx()) / 1000
-		r := image.Rect(int((sidebarWidth+60)*s), int((700-playerBarHeight)*s), img.Bounds().Dx(), img.Bounds().Dy())
+		r := image.Rect(int(60*s), int((700-playerBarHeight)*s), img.Bounds().Dx(), img.Bounds().Dy())
 		out := image.NewRGBA(image.Rect(0, 0, r.Dx(), r.Dy()))
 		draw.Draw(out, out.Bounds(), img, r.Min, draw.Src)
 		return out

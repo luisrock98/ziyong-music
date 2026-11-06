@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/egoist/mygo/ui"
 
@@ -97,7 +98,8 @@ type artistData struct {
 // What an artist's page lists: their songs, the most popular or the
 // newest, their albums, or their events.
 const (
-	artistHot = iota
+	artistOverview = iota
+	artistHot
 	artistLatest
 	artistAlbums
 	artistEvents
@@ -124,6 +126,10 @@ func (a *app) artist(id int64) *artistData {
 func (a *app) loadArtist(id int64) {
 	d := a.artist(id)
 	switch a.artistTab {
+	case artistOverview:
+		if d.profile != nil && d.profile.AlbumSize > 0 && !d.albumsPage.loaded {
+			a.loadAlbums(id)
+		}
 	case artistLatest:
 		a.loadLatest(id)
 	case artistAlbums:
@@ -147,6 +153,9 @@ func (a *app) loadArtist(id int64) {
 				return
 			}
 			d.profile = ar
+			if a.artistTab == artistOverview && a.route == (route{page: pageArtist, id: id}) && ar.AlbumSize > 0 && !d.albumsPage.loaded {
+				a.loadAlbums(id)
+			}
 			// Their events are their account's, which their profile names.
 			if a.artistTab == artistEvents && a.route == (route{page: pageArtist, id: id}) {
 				a.loadEvents(id)
@@ -243,6 +252,12 @@ func (a *app) toggleFollow(id int64) {
 		err := followArtist(id, follow)
 		a.post(func() {
 			d.following = false
+			if err == nil && a.artists[id] == d && a.libraryCollection != nil {
+				a.libraryCollection.artistPage.loaded = false
+				if a.route.page == pageLibrary && a.libraryFilter == 4 {
+					a.loadLibraryCollection()
+				}
+			}
 			switch {
 			case err != nil:
 				ar.Followed = !follow
@@ -272,6 +287,38 @@ func (a *app) artistPage(c *ui.Context) {
 	}
 	header := func(c *ui.Context) { a.artistHeader(c, d) }
 	switch a.artistTab {
+	case artistOverview:
+		a.scrollPage(c, func() {
+			header(c)
+			if len(d.albums) > 0 {
+				al := &d.albums[0]
+				a.section(c, "最新发行")
+				ui.ButtonBase(c.Key("release")).Gap(18).AlignSelf(ui.Start).AlignItems(ui.Center).Label("最新发行：" + al.Name).Children(func() {
+					a.cover(c, al.PicURL, 300, 104, 10)
+					ui.Column(c).Gap(6).Children(func() {
+						ui.Text(c, al.Name).FontSize(21).FontWeight(700).MaxLines(2)
+						if al.PublishTime > 0 {
+							ui.Text(c, time.UnixMilli(al.PublishTime).Format("2006.01.02")).TextColor(a.pal.muted)
+						}
+					})
+				}).OnClick(func() { a.open(route{page: pageAlbum, id: al.ID}) })
+			}
+			if songs := d.profile.Songs; len(songs) > 0 {
+				a.section(c, "热门歌曲")
+				a.compactTracks(c, songs[:min(len(songs), 12)], min(3, a.columns(c, 240)))
+				if len(songs) > 12 {
+					filterButton(c, "全部热门歌曲", false).AlignSelf(ui.Center).OnClick(func() { a.artistTab = artistHot })
+				}
+			}
+			if len(d.albums) > 0 {
+				a.section(c, "专辑作品")
+				a.albumGrid(c, d.albums[:min(len(d.albums), a.columns(c, 156))])
+			}
+			if d.albumsPage.err != "" {
+				ui.Button(c, "重新加载专辑").OnClick(func() { a.loadAlbums(id) })
+			}
+		})
+		return
 	case artistAlbums:
 		a.scrollPage(c, func() {
 			header(c)
@@ -330,7 +377,7 @@ func (a *app) empty(c *ui.Context, msg string) {
 }
 
 // artistPhotoSize is the width of an artist's round photo on their page.
-const artistPhotoSize = 212
+const artistPhotoSize = 248
 
 func (a *app) artistHeader(c *ui.Context, d *artistData) {
 	p := a.pal
@@ -340,7 +387,7 @@ func (a *app) artistHeader(c *ui.Context, d *artistData) {
 	if a.artistTab == artistLatest && d.latest != nil {
 		songs = d.latest
 	}
-	ui.Row(c).Gap(28).AlignItems(ui.End).Padding(0, 0, 8, 0).Children(func() {
+	ui.Row(c).Gap(48).AlignItems(ui.Center).Padding(0, 0, 8, 0).Children(func() {
 		photo := ar.Avatar
 		if photo == "" {
 			photo = ar.PicURL
@@ -350,7 +397,7 @@ func (a *app) artistHeader(c *ui.Context, d *artistData) {
 		})
 		ui.Column(c).Grow(1).Shrink(1).MinWidth(0).Gap(8).Children(func() {
 			ui.Text(c, "歌手").FontSize(12).FontWeight(600).TextColor(p.accent)
-			ui.Text(c, ar.Name).FontSize(30).FontWeight(800).LetterSpacing(-0.6).MaxLines(2).LineHeight(1.2)
+			ui.Text(c, ar.Name).FontSize(detailTitleSize(c)).FontWeight(700).LetterSpacing(-0.6).MaxLines(2).LineHeight(1.2)
 			var meta []string
 			if aka := distinct(append([]string{ar.Trans}, ar.Alias...)); len(aka) > 0 {
 				meta = append(meta, strings.Join(aka, " / "))
@@ -363,9 +410,9 @@ func (a *app) artistHeader(c *ui.Context, d *artistData) {
 			}
 			ui.Text(c, strings.Join(meta, " · ")).FontSize(13).TextColor(p.muted)
 			if d := strings.TrimSpace(ar.BriefDesc); d != "" {
-				ui.Text(c, strings.ReplaceAll(d, "\n", " ")).FontSize(12.5).TextColor(p.muted).MaxLines(2).LineHeight(1.45).Margin(2, 0, 0, 0)
+				a.detailDescription(c, d)
 			}
-			ui.Row(c).Gap(10).Margin(10, 0, 0, 0).Children(func() {
+			ui.Row(c).Gap(10).Margin(24, 0, 0, 0).Children(func() {
 				if pillButton(c.Key("play"), iconPlay, "播放", p.accent, p.onAccent).Clicked() {
 					if a.pl.Shuffle() {
 						a.pl.ToggleShuffle()
@@ -391,16 +438,16 @@ func (a *app) artistHeader(c *ui.Context, d *artistData) {
 	ui.Row(c).AlignItems(ui.Center).Margin(34, 0, 14, 0).Children(func() {
 		ui.Text(c, artistTabTitles[a.artistTab]).FontSize(19).FontWeight(700).LetterSpacing(-0.3)
 		ui.Spacer(c)
-		if segmented(c.Key("tab"), &a.artistTab, "热门", "最新", "专辑", "动态") {
+		if segmented(c.Key("tab"), &a.artistTab, "概览", "热门", "最新", "专辑", "动态") {
 			a.loadArtist(ar.ID)
 		}
 	})
 }
 
-var artistTabTitles = [...]string{"歌曲", "歌曲", "专辑", "动态"}
+var artistTabTitles = [...]string{"作品", "歌曲", "歌曲", "专辑", "动态"}
 
 func (a *app) artistHeaderSkeleton(c *ui.Context, s shimmer) {
-	ui.Row(c).Gap(28).AlignItems(ui.End).Padding(0, 0, 8, 0).Children(func() {
+	ui.Row(c).Gap(48).AlignItems(ui.Center).Padding(0, 0, 8, 0).Children(func() {
 		s.bone(c, artistPhotoSize/2).Size(artistPhotoSize, artistPhotoSize)
 		ui.Column(c).Grow(1).Shrink(1).MinWidth(0).Gap(8).Children(func() {
 			s.text(c, 12, 1.3).Width(24)
@@ -410,7 +457,7 @@ func (a *app) artistHeaderSkeleton(c *ui.Context, s shimmer) {
 				s.text(c, 12.5, 1.45).WidthPercent(78)
 				s.text(c, 12.5, 1.45).WidthPercent(52)
 			})
-			ui.Row(c).Gap(10).Margin(10, 0, 0, 0).Children(func() {
+			ui.Row(c).Gap(10).Margin(24, 0, 0, 0).Children(func() {
 				s.bone(c, 18).Size(92, 36)
 				s.bone(c, 18).Size(120, 36)
 			})

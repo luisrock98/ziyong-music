@@ -2,7 +2,8 @@
   "name": "自用MUSIC",
   "identifier": "local.personal.mygo.cloudmusic",
   "slug": "mygo-cloudmusic-personal",
-  "version": "0.1.20",
+  "version": "2.0.1",
+  "icon": "resources/icon.png",
   "out": "build",
   "macos": {
     "minimumSystemVersion": "13.0"

@@ -189,8 +189,9 @@ func (a *app) podcastPage(c *ui.Context) {
 	pod := d.podcast
 	cur := a.pl.Current()
 	a.scrollPage(c, func() {
-		ui.Row(c).Gap(28).AlignItems(ui.End).Padding(0, 0, 8, 0).Children(func() {
-			ui.Box(c).Size(212, 212).Radius(14).Shadow(0, 18, 40, -10, p.cardShade).Children(func() {
+		size := detailCoverSize(c)
+		ui.Row(c).Gap(40).AlignItems(ui.Center).Padding(0, 0, 8, 0).Children(func() {
+			ui.Box(c).Size(size, size).Radius(14).Shadow(0, 18, 40, -10, p.cardShade).Children(func() {
 				a.coverFill(c, pod.PicURL, 600, 14)
 			})
 			ui.Column(c).Grow(1).Shrink(1).MinWidth(0).Gap(8).Children(func() {
@@ -199,7 +200,7 @@ func (a *app) podcastPage(c *ui.Context) {
 					kind += " · " + pod.Category
 				}
 				ui.Text(c, kind).FontSize(12).FontWeight(600).TextColor(p.accent)
-				ui.Text(c, pod.Name).FontSize(30).FontWeight(800).LetterSpacing(-0.6).MaxLines(2).LineHeight(1.2)
+				ui.Text(c, pod.Name).FontSize(detailTitleSize(c)).FontWeight(800).LetterSpacing(-0.6).MaxLines(2).LineHeight(1.2)
 				ui.RichText(c).FontSize(13).TextColor(p.muted).Children(func() {
 					if pod.DJ.UserID != 0 {
 						a.link(c.Key("dj"), pod.DJ.Nickname, p.muted, p.text, route{page: pageUser, id: pod.DJ.UserID})
@@ -208,7 +209,7 @@ func (a *app) podcastPage(c *ui.Context) {
 					ui.Text(c, fmt.Sprintf("%d 期 · %s 人订阅", pod.ProgramCount, count(int(pod.SubCount))))
 				})
 				if desc := strings.TrimSpace(pod.Description); desc != "" {
-					ui.Text(c, strings.ReplaceAll(desc, "\n", " ")).FontSize(12.5).TextColor(p.muted).MaxLines(2).LineHeight(1.45).Margin(2, 0, 0, 0)
+					a.detailDescription(c, desc)
 				}
 				ui.Row(c).Gap(10).Margin(10, 0, 0, 0).Children(func() {
 					if pillButton(c.Key("play"), iconPlay, "播放", p.accent, p.onAccent).Clicked() {
@@ -240,11 +241,11 @@ func (a *app) programRow(c *ui.Context, d *podcastData, i int, cur *netease.Trac
 	p := a.pal
 	pr := &d.programs[i]
 	playing := cur != nil && cur.ProgramID == pr.ID
-	row := ui.ButtonBase(c).Height(60).PaddingX(12).Gap(14).Radius(8).AlignItems(ui.Center).FocusRing(false).
+	row := ui.ButtonBase(c).Height(68).PaddingX(12).Gap(14).Radius(8).AlignItems(ui.Center).FocusRing(false).
 		Label(pr.Name).Disabled(pr.MainSong.ID == 0)
 	switch {
 	case playing:
-		row.Background(p.accent.Alpha(0.08))
+		row.Background(p.primaryBG())
 	case row.Hovered():
 		row.Background(p.hover)
 	}
@@ -253,9 +254,9 @@ func (a *app) programRow(c *ui.Context, d *podcastData, i int, cur *netease.Trac
 		if cover == "" {
 			cover = d.podcast.PicURL
 		}
-		a.cover(c, cover, 96, 40, 6)
+		a.cover(c, cover, 120, 48, 8)
 		ui.Column(c).Grow(1).Shrink(1).MinWidth(0).Gap(3).Children(func() {
-			title := ui.Text(c, pr.Name).FontSize(13.5).FontWeight(500).SingleLine()
+			title := ui.Text(c, pr.Name).FontSize(16).FontWeight(650).SingleLine()
 			if playing {
 				title.TextColor(p.accent)
 			}
@@ -320,6 +321,7 @@ func (a *app) programPane(c *ui.Context, tr *netease.Track) {
 // subscribes to, NetEase's picks, and the most popular, as far as they have
 // loaded.
 type podcastTab struct {
+	filter  string
 	subs    []netease.Podcast // the latest subscribed first
 	picks   []netease.Podcast
 	hot     []netease.Podcast
@@ -428,10 +430,27 @@ func (a *app) podcastsPage(c *ui.Context) {
 			a.playlistCardsSkeleton(c, s, cols*2, 150, true)
 			return
 		}
-		// The first list starts right under the heading.
+		ui.Row(c).Wrap().Gap(8).Margin(4, 0, 24, 0).Children(func() {
+			for _, key := range []string{"", "我的订阅", "精选播客", "热门播客"} {
+				if key == "我的订阅" && a.profile == nil && len(t.subs) == 0 {
+					continue
+				}
+				label := key
+				if key == "" {
+					label = "全部播客"
+				}
+				filterButton(c.Key(key), label, t.filter == key).OnClick(func() { t.filter = key })
+			}
+		})
 		first := true
 		list := func(title string, pods []netease.Podcast) {
+			if t.filter != "" && t.filter != title {
+				return
+			}
 			if len(pods) == 0 {
+				if t.filter == title && (title != "热门播客" || t.hotPage.err == "") {
+					a.empty(c, "暂无"+title)
+				}
 				return
 			}
 			if s := a.section(c, title); first {
@@ -447,7 +466,9 @@ func (a *app) podcastsPage(c *ui.Context) {
 		list("我的订阅", t.subs)
 		list("精选播客", t.picks)
 		list("热门播客", t.hot)
-		a.pageFoot(c, &t.hotPage, a.loadHotPodcasts)
+		if t.filter == "" || t.filter == "热门播客" {
+			a.pageFoot(c, &t.hotPage, a.loadHotPodcasts)
+		}
 	})
 }
 

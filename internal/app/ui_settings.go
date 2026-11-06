@@ -54,14 +54,28 @@ func (a *app) settingsView(c *ui.Context) {
 	p := paletteFor(&t)
 	t.Accent, t.AccentText = p.accent, p.onAccent
 	c.SetTheme(&t)
-	c.Root().Background(p.sidebar)
+	c.Root().Background(p.bg)
 	c.OnShortcut(ui.Cmd, ui.KeyW, func() { a.settingsWin.Close() })
 	s := &a.settings
 
 	ui.Scroll(c).Fill().Padding(24, 28, 32, 28).Gap(8).Children(func() {
-		group := func(title string, rows func()) {
-			ui.Text(c, title).FontSize(12).FontWeight(600).TextColor(p.muted).Margin(14, 4, 4, 4)
-			ui.Column(c).Radius(12).Background(p.bg).Border(1, p.hairline).Dividers(1, p.hairline).Children(rows)
+		ui.Row(c).AlignItems(ui.Center).Gap(12).Children(func() {
+			ui.Text(c, "设置").FontSize(36).FontWeight(750)
+			if version := mygo.App.Version(); version != "" {
+				ui.Text(c, "版本 "+version).FontSize(13).TextColor(p.muted)
+			}
+		})
+		ui.Row(c).Gap(8).Wrap().Children(func() {
+			for i, label := range []string{"全部", "播放与播客", "外观与桌面", "账号与存储"} {
+				filterButton(c.Key(i), label, a.settingsGroup == i).OnClick(func() { a.settingsGroup = i })
+			}
+		})
+		group := func(category int, title string, rows func()) {
+			if a.settingsGroup != 0 && category != a.settingsGroup {
+				return
+			}
+			ui.Text(c, title).FontSize(20).FontWeight(700).Margin(16, 2, 4, 2)
+			ui.Column(c).Radius(12).Background(p.sidebar).Dividers(1, p.hairline).Children(rows)
 		}
 		row := func(label, desc string, control func()) {
 			ui.Row(c).Padding(12, 16).Gap(16).AlignItems(ui.Center).MinHeight(48).Children(func() {
@@ -78,7 +92,7 @@ func (a *app) settingsView(c *ui.Context) {
 		// Only on macOS: elsewhere the icon is always in the notification
 		// area.
 		if runtime.GOOS == "darwin" {
-			group("通用", func() {
+			group(2, "通用", func() {
 				row("应用图标", "显示在菜单栏时，关闭窗口后可从菜单栏图标打开", func() {
 					labels := make([]string, len(appIcons))
 					chosen := appIcons[0].label
@@ -103,7 +117,7 @@ func (a *app) settingsView(c *ui.Context) {
 
 		// Only on macOS, the one with a notch player.
 		if a.notch != nil {
-			group("刘海播放器", func() {
+			group(2, "刘海播放器", func() {
 				row("显示刘海播放器", "在屏幕顶部的刘海处显示迷你播放器，鼠标悬停即可展开", func() {
 					if ui.Switch(c.Key("notch"), &s.Notch).Label("显示刘海播放器").Changed() {
 						a.changed()
@@ -122,7 +136,7 @@ func (a *app) settingsView(c *ui.Context) {
 			})
 		}
 
-		group("播放", func() {
+		group(1, "播放", func() {
 			row("音质", "无损与 Hi-Res 需要黑胶 VIP，没有时播放所能播放的最高音质；下一首歌曲开始生效", func() {
 				labels := make([]string, len(qualityLevels))
 				chosen := qualityLevels[2].label
@@ -155,10 +169,10 @@ func (a *app) settingsView(c *ui.Context) {
 		})
 
 		if a.captionsShown() {
-			group("播客", func() { a.captionSettings(row, c) })
+			group(1, "播客", func() { a.captionSettings(row, c) })
 		}
 
-		group("缓存", func() {
+		group(3, "缓存", func() {
 			row("歌曲缓存", "听过的歌曲保存在本机，再次播放无需等待，也不耗流量；"+a.cacheUsage(), func() {
 				labels := make([]string, len(cacheLimits))
 				chosen := cacheLimits[2].label
@@ -185,7 +199,7 @@ func (a *app) settingsView(c *ui.Context) {
 			})
 		})
 
-		group("外观", func() {
+		group(2, "外观", func() {
 			row("外观", "", func() {
 				modes := []string{"system", "light", "dark"}
 				i := 0
@@ -201,7 +215,7 @@ func (a *app) settingsView(c *ui.Context) {
 			})
 		})
 
-		group("实验性功能", func() {
+		group(1, "实验性功能", func() {
 			row("进度条烟雾特效", "播放时进度条化作拖着烟雾的光点，随音乐起伏；会多用一些电量", func() {
 				if ui.Switch(c.Key("smoke"), &s.Smoke).Label("进度条烟雾特效").Changed() {
 					a.changed()
@@ -214,7 +228,7 @@ func (a *app) settingsView(c *ui.Context) {
 			})
 		})
 
-		group("账号", func() {
+		group(3, "账号", func() {
 			if a.profile == nil {
 				row("未登录", "登录后，每日推荐与歌单将根据你的口味生成", func() {
 					if ui.PrimaryButton(c.Key("login"), "扫码登录").Clicked() {
@@ -239,7 +253,7 @@ func (a *app) settingsView(c *ui.Context) {
 		})
 
 		if a.updates {
-			group("更新", func() {
+			group(3, "更新", func() {
 				desc := "每天检查一次是否有新版本"
 				if t := lastUpdateCheck(); !t.IsZero() {
 					desc += "；上次检查：" + commentTime(t, time.Now())
@@ -256,7 +270,7 @@ func (a *app) settingsView(c *ui.Context) {
 						setUpdateDownloads(on)
 					}
 				})
-				row("当前版本 "+mygo.App.Version(), "", func() {
+				row("手动更新", "", func() {
 					if ui.Button(c.Key("check-updates"), "检查更新").Clicked() {
 						checkForUpdates()
 					}

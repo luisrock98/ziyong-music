@@ -26,6 +26,10 @@ type searchRequest struct {
 // asked, and finds nothing, which lands nowhere without a window.
 func fakeSearch(t *testing.T) chan searchRequest {
 	asked := make(chan searchRequest, 8)
+	searchPreviewResults = func(string, netease.SearchType, int, int) (netease.SearchResult, error) {
+		return netease.SearchResult{}, nil
+	}
+	t.Cleanup(func() { searchPreviewResults = netease.SearchPage })
 	searchResults = func(q string, kind netease.SearchType, _, offset int) (netease.SearchResult, error) {
 		asked <- searchRequest{q, kind, offset}
 		return netease.SearchResult{}, errors.New("offline")
@@ -347,6 +351,10 @@ func TestPodcastsTabLoads(t *testing.T) {
 	a := newTestApp()
 	a.settings = defaultSettings()
 	tt := ui.NewTester(a.view, 1200, 800)
+	tt.Frame()
+	if err := tt.Click("发现"); err != nil {
+		t.Fatal(err)
+	}
 	tt.Frame()
 	if err := tt.Click("播客"); err != nil {
 		t.Fatal(err)

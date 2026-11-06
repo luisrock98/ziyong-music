@@ -121,6 +121,10 @@ func TestCreatePlaylist(t *testing.T) {
 	a := editTestApp()
 	tt := ui.NewTester(a.view, 1200, 800)
 	tt.Frame()
+	if err := tt.Click("音乐库"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
 	if err := tt.Click("新建歌单"); err != nil {
 		t.Fatal(err)
 	}
@@ -168,6 +172,10 @@ func TestRenamePlaylist(t *testing.T) {
 	a.homeLoading = true
 	tt := ui.NewTester(a.view, 1200, 800)
 	tt.Frame()
+	if err := tt.Click("音乐库"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
 	if err := tt.RightClick("睡前"); err != nil {
 		t.Fatal(err)
 	}
@@ -199,6 +207,10 @@ func TestNoRenamingLikedSongs(t *testing.T) {
 	a.route = route{page: pageHome}
 	a.homeLoading = true
 	tt := ui.NewTester(a.view, 1200, 800)
+	tt.Frame()
+	if err := tt.Click("音乐库"); err != nil {
+		t.Fatal(err)
+	}
 	tt.Frame()
 	tt.RightClick("小明喜欢的音乐")
 	if err := tt.ChooseMenuItem("重命名…"); err == nil {
@@ -256,6 +268,10 @@ func TestCancelDeletingPlaylist(t *testing.T) {
 	a.route = route{page: pageHome}
 	a.homeLoading = true
 	tt := ui.NewTester(a.view, 1200, 800)
+	tt.Frame()
+	if err := tt.Click("音乐库"); err != nil {
+		t.Fatal(err)
+	}
 	tt.Frame()
 	if err := tt.RightClick("睡前"); err != nil {
 		t.Fatal(err)

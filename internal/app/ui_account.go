@@ -47,6 +47,9 @@ func (a *app) boot() {
 // signedIn shows what is personal to prof, or to nobody.
 func (a *app) signedIn(prof *netease.Profile) {
 	a.profile = prof
+	a.daily, a.homeArtists = nil, nil
+	a.libraryFilter = 0
+	a.libraryCollection = nil
 	// Playback picks up where it was left, once the session that lets
 	// the listener play their songs is back.
 	a.restoreSession()
@@ -78,7 +81,7 @@ func (a *app) openLogin() {
 			code, err = qr.Encode(netease.LoginURL(key), qr.M)
 		}
 		a.post(func() {
-			if gen != a.login.gen {
+			if gen != a.login.gen || !a.login.open {
 				return
 			}
 			if err != nil {
@@ -164,7 +167,7 @@ func (a *app) loginDialog(c *ui.Context) {
 	l := &a.login
 	ui.DialogBase(c.Key("login"), &l.open, func(backdrop, panel ui.Element) {
 		backdrop.Background(ui.RGBA(0, 0, 0, 0.35))
-		panel.Width(340).Padding(28, 28, 26, 28).Radius(22).Gap(6).AlignItems(ui.Center).
+		panel.Width(368).Padding(32, 28, 24, 28).Radius(18).Gap(8).AlignItems(ui.Center).
 			Background(p.bg).Border(1, p.hairline).Shadow(0, 24, 60, -12, ui.RGBA(0, 0, 0, 0.4)).
 			Transition(ui.ElementTransition{Animation: &ui.Snappy, Enter: &ui.Motion{Scale: 0.94}, Exit: &ui.Motion{Scale: 0.96}})
 		title, sub := "扫码登录", "打开网易云音乐 App，扫一扫登录"
@@ -178,10 +181,10 @@ func (a *app) loginDialog(c *ui.Context) {
 		case l.status == netease.QRExpired:
 			sub = "二维码已失效"
 		}
-		ui.Text(c, title).FontSize(20).FontWeight(700)
+		ui.Text(c, title).FontSize(30).FontWeight(750)
 		ui.Text(c, sub).FontSize(13).TextColor(p.muted).TextAlign(ui.Center).Margin(0, 0, 14, 0)
 
-		ui.Box(c).Size(212, 212).Radius(16).Background(ui.RGB(255, 255, 255)).Border(1, p.hairline).Children(func() {
+		ui.Box(c).Size(224, 224).Radius(16).Background(ui.RGB(255, 255, 255)).Border(1, p.hairline).Children(func() {
 			if l.code != nil {
 				code := l.code
 				opacity := float32(1)
@@ -213,7 +216,9 @@ func (a *app) loginDialog(c *ui.Context) {
 				}
 			})
 		})
-		ui.Text(c, "登录后，每日推荐与歌单将根据你的口味生成").FontSize(11.5).TextColor(p.faint).Margin(16, 0, 0, 0)
+		if !l.finished {
+			filterButton(c.Key("cancel"), "取消", false).Margin(12, 0, 0, 0).OnClick(func() { l.open = false; l.gen++ })
+		}
 	})
 }
 
@@ -242,53 +247,34 @@ func (a *app) profileName() string {
 	return a.profile.Nickname
 }
 
-// accountRow sits at the foot of the sidebar: who is signed in, with a
-// dropdown to open their page or the settings or sign out, or a way to
-// sign in.
+// accountRow opens the account menu from the avatar in the navigation bar.
 func (a *app) accountRow(c *ui.Context) {
 	p := a.pal
-	b := ui.ButtonBase(c.Key("account")).Height(40).PaddingX(8).Gap(10).Radius(10).AlignItems(ui.Center).Justify(ui.Start).FocusRing(false)
-	if b.Hovered() || a.accountOpen && a.profile != nil {
+	b := ui.ButtonBase(c.Key("account")).Size(38, 38).Radius(19).Center()
+	if b.Hovered() || a.accountOpen {
 		b.Background(p.hover)
 	}
 	if a.profile == nil {
 		a.accountOpen = false
-		b.Label("登录").Children(func() {
-			ui.Box(c).Size(26, 26).Radius(13).Background(p.press).Center().Children(func() {
-				ui.Icon(c, iconUser).Size(14, 14).TextColor(p.muted)
-			})
-			ui.Text(c, "登录网易云音乐").FontSize(13).FontWeight(500).TextColor(p.muted)
-		})
-		if b.Clicked() {
-			a.openLogin()
-		}
+		b.Label("登录").Children(func() { ui.Icon(c, iconUser).Size(19, 19).TextColor(p.muted) })
+		b.OnClick(a.openLogin)
 		return
 	}
-	prof := a.profile
-	b.Label(prof.Nickname).Expanded(a.accountOpen).Children(func() {
-		a.avatar(c, prof.AvatarURL, 26, p.press)
-		ui.Text(c, prof.Nickname).FontSize(13).FontWeight(600).SingleLine().Grow(1).Shrink(1).MinWidth(0)
-		ui.Icon(c, iconUpDown).Size(13, 13).TextColor(p.faint)
-	})
+	b.Label(a.profile.Nickname).Expanded(a.accountOpen).Children(func() { a.avatar(c, a.profile.AvatarURL, 30, p.press) })
 	if b.Clicked() {
 		a.accountOpen = !a.accountOpen
 	}
 	a.accountMenu(c, b)
 }
 
-// accountMenu drops up from the account row, as wide as it, in the colors
-// of the volume popover: the listener's own page and the settings, then
-// signing out.
 func (a *app) accountMenu(c *ui.Context, row ui.Element) {
 	pop := popoverColors(a.pal.dark)
 	ui.PopoverBase(c.Key("account-menu"), row, &a.accountOpen, func(panel ui.Element) {
-		panel.AttachTo(row, ui.AnchorTopStart, ui.AnchorBottomStart).Margin(0, 0, 6, 0).Padding(5).Gap(1).
+		panel.AttachTo(row, ui.AnchorBottomEnd, ui.AnchorTopEnd).Margin(6, 0, 0, 0).Padding(5).Gap(1).
 			Radius(12).Background(pop.fill).Border(0.5, pop.edge).Shadow(0, 8, 24, -4, ui.RGBA(0, 0, 0, 0.2)).
 			Role(ui.RoleMenu).FocusGroup(ui.Vertical).Label("账户").TransformOrigin(0.5, 1).
 			Transition(ui.ElementTransition{Animation: &ui.Snappy, Enter: &ui.Motion{Scale: 0.96, Y: 4}, Exit: &ui.Motion{Scale: 0.98}})
-		if w := row.Bounds().W; w > 0 {
-			panel.Width(w)
-		}
+		panel.Width(194)
 		shortcut := "Ctrl+,"
 		if runtime.GOOS == "darwin" {
 			shortcut = "⌘,"
@@ -328,66 +314,171 @@ func (a *app) menuItem(c *ui.Context, icon *ui.SVG, label, shortcut string) ui.E
 	return b
 }
 
-// myPlaylists lists the listener's playlists under a header that opens
-// and closes them: those they made, if mine, with a button to make one
-// and a menu to rename them.
-func (a *app) myPlaylists(c *ui.Context, title string, lists []netease.Playlist, mine bool, collapsed *bool) {
-	if len(lists) == 0 {
-		return
-	}
-	p := a.pal
-	ui.Row(c.Key(title)).AlignItems(ui.Center).Margin(18, 4, 6, 6).Children(func() {
-		b := ui.ButtonBase(c.Key("toggle")).Grow(1).Height(26).PaddingX(4).Gap(6).Radius(6).
-			AlignItems(ui.Center).Justify(ui.Start).Role(ui.RoleDisclosure).Label(title)
-		if b.Clicked() {
-			*collapsed = !*collapsed
+func (a *app) libraryPage(c *ui.Context) {
+	a.scrollPage(c, func() {
+		if a.profile == nil {
+			a.heading(c, "音乐库", "")
+			pillButton(c, iconUser, "登录网易云音乐", a.pal.accent, a.pal.onAccent).OnClick(a.openLogin)
+			return
 		}
-		b.Expanded(!*collapsed)
-		if b.Hovered() {
-			b.Background(p.hover)
-		}
-		b.Children(func() {
-			ui.Text(c, title).FontSize(11.5).FontWeight(600).TextColor(p.faint).Grow(1)
-			arrow := iconDown
-			if *collapsed {
-				arrow = iconForward
-			}
-			ui.Icon(c, arrow).Size(12, 12).TextColor(p.faint)
+		ui.Row(c).Gap(14).AlignItems(ui.Center).Margin(0, 0, 28, 0).Children(func() {
+			a.cover(c, a.profile.AvatarURL, 100, 40, 20)
+			ui.Text(c, a.profile.Nickname+"的音乐库").FontSize(34).FontWeight(750)
 		})
-		if mine && iconButton(c.Key("new"), iconPlus, 13, p.faint, "新建歌单").Size(26, 26).Radius(6).Clicked() {
-			a.newPlaylist(nil)
-		}
-	})
-	if *collapsed {
-		return
-	}
-	for i := range lists {
-		pl := &lists[i]
-		selected := a.route.page == pagePlaylist && a.route.id == pl.ID && !a.nowPlaying
-		b := ui.ButtonBase(c.Key(pl.ID)).Height(34).PaddingX(8).Gap(10).Radius(8).AlignItems(ui.Center).Justify(ui.Start).FocusRing(false).Label(pl.Name)
-		switch {
-		case selected:
-			b.Background(p.press)
-		case b.Hovered():
-			b.Background(p.hover)
-		}
-		b.Children(func() {
-			a.cover(c, pl.Cover(), 80, 22, 5)
-			ui.Text(c, pl.Name).FontSize(13).SingleLine().Shrink(1).MinWidth(0)
-		})
-		if mine && pl.SpecialType != 5 {
-			b.ContextMenu(func(m *ui.Menu) {
-				if m.Item("重命名…").Chosen() {
-					a.startRename(pl)
-				}
-				m.Separator()
-				if m.Item("删除歌单…").Chosen() {
-					a.confirmDelete(pl)
+		id := a.likedPlaylist()
+		ui.Row(c).Gap(30).AlignItems(ui.Stretch).Children(func() {
+			card := ui.ButtonBase(c.Key("liked-library")).Width(280).Height(224).Radius(16).Padding(24).Column().AlignItems(ui.Start).Justify(ui.End).Gradient(ui.Hex("#335eea"), ui.Hex("#684ac5"), 125).TextColor(white).Label("我喜欢的音乐")
+			card.Children(func() {
+				ui.Icon(c, iconHeartFill).Size(48, 48).Margin(0, 0, 30, 0)
+				ui.Text(c, "我喜欢的音乐").FontSize(24).FontWeight(700)
+				ui.Row(c).AlignItems(ui.Center).Children(func() {
+					ui.Textf(c, "%d 首歌曲", len(a.liked)).FontSize(14).Grow(1)
+					iconButton(c.Key("play-liked"), iconPlay, 23, white, "播放喜欢的音乐").Disabled(id == 0 || a.loadingPl[id]).OnClick(func() { a.loadPlaylist(id, true) })
+				})
+			})
+			card.OnClick(func() {
+				if id != 0 {
+					a.open(route{page: pagePlaylist, id: id})
 				}
 			})
+			ui.Column(c).Grow(1).Basis(0).MinWidth(0).Children(func() {
+				if pl := a.playlists[id]; pl != nil {
+					w, _ := c.Size()
+					cols := 3
+					if w < 1100 {
+						cols = 2
+					}
+					a.compactTracks(c, pl.Tracks[:min(len(pl.Tracks), cols*4)], cols)
+				} else if a.loadingPl[id] {
+					ui.Text(c, "正在加载喜欢的歌曲…").TextColor(a.pal.muted)
+				} else if a.plErr[id] != "" {
+					ui.Button(c, "重新加载歌曲").OnClick(func() { a.loadPlaylist(id, false) })
+				}
+			})
+		})
+		ui.Row(c).Wrap().Gap(8).Margin(40, 0, 24, 0).AlignItems(ui.Center).Children(func() {
+			for i, label := range []string{"全部歌单", "我的歌单", "收藏的歌单", "收藏的专辑", "关注的艺人"} {
+				filterButton(c.Key(i), label, a.libraryFilter == i).OnClick(func() { a.libraryFilter = i; a.loadLibraryCollection() })
+			}
+			ui.Spacer(c)
+			if a.libraryFilter < 3 {
+				pillButton(c.Key("new"), iconPlus, "新建歌单", a.pal.hover, a.pal.text).OnClick(func() { a.newPlaylist(nil) })
+			}
+		})
+		if a.libraryFilter >= 3 {
+			a.collectionGrid(c)
+			return
 		}
-		if b.Clicked() {
-			a.open(route{page: pagePlaylist, id: pl.ID})
+		lists := append([]netease.Playlist{}, a.mine...)
+		if a.libraryFilter == 2 {
+			lists = nil
 		}
+		if a.libraryFilter != 1 {
+			lists = append(lists, a.saved...)
+		}
+		ui.Grid(c).Columns(a.columns(c, 160)).GapX(24).GapY(40).Children(func() {
+			for i := range lists {
+				pl := &lists[i]
+				if pl.SpecialType == 5 {
+					continue
+				}
+				menu := func(m *ui.Menu) {}
+				if mine := a.editable(pl.ID); mine != nil {
+					menu = func(m *ui.Menu) {
+						if m.Item("重命名…").Chosen() {
+							a.startRename(mine)
+						}
+						m.Separator()
+						if m.Item("删除歌单…").Chosen() {
+							a.confirmDelete(mine)
+						}
+					}
+				}
+				if a.coverCard(c.Key(pl.ID), pl.Name, pl.Cover(), 0, pl.Creator.Nickname, func() { a.loadPlaylist(pl.ID, true) }, menu) {
+					a.open(route{page: pagePlaylist, id: pl.ID})
+				}
+			}
+		})
+	})
+}
+
+type libraryCollection struct {
+	albums                []netease.AlbumProfile
+	artists               []netease.ArtistProfile
+	albumPage, artistPage paged
+}
+
+func (a *app) loadLibraryCollection() {
+	if a.profile == nil || a.libraryFilter < 3 {
+		return
+	}
+	if a.libraryCollection == nil {
+		a.libraryCollection = &libraryCollection{}
+	}
+	d := a.libraryCollection
+	if a.libraryFilter == 3 {
+		if !d.albumPage.loaded {
+			a.moreLibraryAlbums(d)
+		}
+		return
+	}
+	if d.artistPage.loading || d.artistPage.loaded {
+		return
+	}
+	d.artistPage = paged{loading: true}
+	go func() {
+		artists, err := followedArtists()
+		a.post(func() {
+			d.artistPage = paged{loaded: err == nil}
+			if err != nil {
+				d.artistPage.err = "关注的艺人加载失败"
+				return
+			}
+			d.artists = artists
+		})
+	}()
+}
+
+func (a *app) moreLibraryAlbums(d *libraryCollection) {
+	if d.albumPage.loading {
+		return
+	}
+	d.albumPage.loading, d.albumPage.err = true, ""
+	offset := len(d.albums)
+	go func() {
+		albums, more, err := netease.SavedAlbums(offset)
+		a.post(func() {
+			d.albumPage.loading = false
+			if err != nil {
+				d.albumPage.err = "收藏的专辑加载失败"
+				return
+			}
+			d.albums = append(d.albums, albums...)
+			d.albumPage.loaded, d.albumPage.more = true, more && len(albums) > 0
+		})
+	}()
+}
+
+func (a *app) collectionGrid(c *ui.Context) {
+	d := a.libraryCollection
+	if d == nil {
+		return
+	}
+	if a.libraryFilter == 3 {
+		a.albumGrid(c, d.albums)
+		a.pageFoot(c, &d.albumPage, func() { a.moreLibraryAlbums(d) })
+		if d.albumPage.loaded && len(d.albums) == 0 {
+			a.empty(c, "还没有收藏专辑")
+		}
+		return
+	}
+	ui.Grid(c).Columns(a.columns(c, 160)).Gap(24).Children(func() {
+		for i := range d.artists {
+			a.artistCard(c.Key(d.artists[i].ID), &d.artists[i])
+		}
+	})
+	a.pageFoot(c, &d.artistPage, a.loadLibraryCollection)
+	if d.artistPage.loaded && len(d.artists) == 0 {
+		a.empty(c, "还没有关注艺人")
 	}
 }

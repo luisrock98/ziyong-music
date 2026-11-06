@@ -1,80 +1,59 @@
 package app
 
 import (
-	"testing"
-
 	"github.com/egoist/mygo/ui"
-
 	"netease-music-mygo/internal/netease"
+	"testing"
 )
 
-// Each playlist header hides only its own rows without changing the page
-// or queue, and Enter restores their navigation.
-func TestSidebarPlaylistCollapse(t *testing.T) {
-	for _, tc := range []struct {
-		name, header, row, other string
-		playlist                 int64
-	}{
-		{"mine", "我的歌单", "睡前", "飙升榜", 11},
-		{"saved", "收藏的歌单", "飙升榜", "睡前", 20},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			a := editTestApp()
-			a.playlists[tc.playlist] = &netease.Playlist{ID: tc.playlist, Name: tc.row}
-			a.pl.Cue(a.playlists[10].Tracks)
-			before := a.route
-			tt := ui.NewTester(a.view, 1200, 800)
-			tt.Frame()
-
-			if err := tt.Click(tc.header); err != nil {
-				t.Fatal(err)
-			}
-			tt.Frame()
-			if _, ok := tt.Find(tc.row); ok {
-				t.Error("the collapsed section still builds its playlist rows")
-			}
-			if _, ok := tt.Find(tc.other); !ok {
-				t.Error("collapsing one section hid the other section's rows")
-			}
-			if a.route != before || len(a.pl.Queue()) != 2 || len(a.mine) != 3 || len(a.saved) != 1 {
-				t.Error("collapsing the section changed the page, queue or playlists")
-			}
-
-			tt.Key(0, ui.KeyEnter)
-			tt.Frame()
-			if err := tt.Click(tc.row); err != nil {
-				t.Fatalf("the restored playlist cannot be opened: %v", err)
-			}
-			tt.Frame()
-			if a.route != (route{page: pagePlaylist, id: tc.playlist}) {
-				t.Errorf("opened %+v, want playlist %d", a.route, tc.playlist)
-			}
-		})
+// Filtering the library changes its cards without touching the queue, and a card still opens its playlist.
+func TestLibraryPlaylistFilters(t *testing.T) {
+	a := editTestApp()
+	a.playlists[11] = &netease.Playlist{ID: 11, Name: "睡前"}
+	a.pl.Cue(a.playlists[10].Tracks)
+	tt := ui.NewTester(a.view, 1200, 900)
+	tt.Frame()
+	if err := tt.Click("音乐库"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if err := tt.Click("收藏的歌单"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if a.libraryFilter != 2 || len(a.pl.Queue()) != 2 {
+		t.Fatal("filter changed queue or was not selected")
+	}
+	if _, ok := tt.Find("睡前"); ok {
+		t.Fatal("created playlist remained in saved filter")
+	}
+	if err := tt.Click("我的歌单"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if err := tt.Click("睡前"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if a.route != (route{page: pagePlaylist, id: 11}) {
+		t.Fatalf("opened %+v", a.route)
 	}
 }
 
-// The plus still opens the naming dialog with both sections collapsed, without expanding either one.
-func TestNewPlaylistInCollapsedSidebar(t *testing.T) {
+// Creating a playlist from the saved filter opens the dialog while preserving the filter.
+func TestNewPlaylistFromLibraryFilter(t *testing.T) {
 	a := editTestApp()
-	tt := ui.NewTester(a.view, 1200, 800)
+	tt := ui.NewTester(a.view, 1200, 900)
 	tt.Frame()
-	for _, header := range []string{"我的歌单", "收藏的歌单"} {
-		if err := tt.Click(header); err != nil {
-			t.Fatal(err)
-		}
-		tt.Frame()
-	}
-	if !a.mineCollapsed || !a.savedCollapsed {
-		t.Fatal("the sections did not collapse independently")
-	}
+	tt.Click("音乐库")
+	tt.Frame()
+	tt.Click("收藏的歌单")
+	tt.Frame()
 	if err := tt.Click("新建歌单"); err != nil {
 		t.Fatal(err)
 	}
 	tt.Frame()
-	if !a.naming.open {
-		t.Error("the plus did not open the naming dialog")
-	}
-	if !a.mineCollapsed || !a.savedCollapsed {
-		t.Error("the plus also toggled a playlist section")
+	if !a.naming.open || a.libraryFilter != 2 {
+		t.Fatal("creating a playlist lost the selected filter")
 	}
 }

@@ -95,8 +95,8 @@ func (l wallLayout) shows(i int, off ui.Point, w, h, top, foot float32) bool {
 
 // wallPane fills Now Playing with the wall, the song playing over it and
 // the controls along its foot.
-func (a *app) wallPane(c *ui.Context, tr *netease.Track, art *artwork, accent ui.Color, w, h float32, pointerIn bool) {
-	top := topBar(c)
+func (a *app) wallPane(c *ui.Context, tr *netease.Track, art *artwork, accent ui.Color, w, h float32) {
+	top := max(56, topBar(c))
 	songH := min(max(h*0.36, 200), 320)
 	// The wall goes on under the foot of the song, into the frost; at
 	// rest, its first row is clear of the frost and its last of the
@@ -123,7 +123,6 @@ func (a *app) wallPane(c *ui.Context, tr *netease.Track, art *artwork, accent ui
 		})
 	a.wallSong(c, tr, art, top, songH)
 	a.wallBar(c, accent)
-	reveal(ui.Row(c.Key("tabs")).Absolute().Top(top).Right(48).Gap(6), pointerIn).Children(func() { a.paneTabs(c) })
 }
 
 // wallSong is the song playing, over the wall: its cover, which breathes
@@ -152,7 +151,7 @@ func (a *app) wallSong(c *ui.Context, tr *netease.Track, art *artwork, top, h fl
 				a.radioChip(c, r)
 			}
 			ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-				ui.Text(c, tr.Name).FontSize(26).FontWeight(800).LetterSpacing(-0.4).SingleLine().Shrink(1).MinWidth(0)
+				ui.Text(c, tr.Name).FontSize(32).FontWeight(800).LetterSpacing(-0.4).SingleLine().Shrink(1).MinWidth(0)
 				a.likeButton(c.Key("like"), tr, 20, white.Alpha(0.7))
 				a.songMenu(c.Key("more"), tr, 20, white.Alpha(0.7)).Margin(0, -8, 0, 0)
 			})
@@ -339,7 +338,7 @@ func (a *app) wallTile(c *ui.Context, tr *netease.Track, i int, x float32, playi
 	}
 	tile.Children(func() {
 		a.cover(c, tr.Album.PicURL, 240, wallTile, 12)
-		if hovered {
+		if hovered || playing {
 			// Its name and artists over a shade along its foot, on the
 			// cover, so that they move with it.
 			ui.Column(c.Key("caption")).Absolute().Top(0).Left(0).Right(0).Bottom(0).Radius(12).Padding(8).Gap(1).
@@ -362,7 +361,7 @@ func (a *app) wallTile(c *ui.Context, tr *netease.Track, i int, x float32, playi
 // and the transport between how far it has gone and how far it has left.
 func (a *app) wallBar(c *ui.Context, accent ui.Color) {
 	pl := a.pl
-	ui.Column(c.Key("wall-bar")).Absolute().Left(0).Right(0).Bottom(0).Padding(0, 48, 24, 48).Gap(10).Children(func() {
+	ui.Column(c.Key("wall-bar")).Absolute().Left(0).Right(0).Bottom(0).Margin(0, 32, 16, 32).Padding(10, 18).Radius(16).Background(ui.RGBA(12, 12, 18, .7)).Gap(6).Children(func() {
 		a.scrubber(c.Key("wall-scrub"), &a.npScrub, white.Alpha(0.18), white.Alpha(0.9), 14, accent.Mix(white, 0.35))
 		ui.Row(c).Gap(14).AlignItems(ui.Center).Children(func() {
 			ui.Row(c).Grow(1).Basis(0).MinWidth(0).Children(func() {
